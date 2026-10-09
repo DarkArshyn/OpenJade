@@ -1,0 +1,18 @@
+# Original game data, historical copies and generated reports are private.
+/game/
+/OLD-Archive/
+/reports/*
+!/reports/README.md
+# Do not publish extracted assets from any working directory.
+*.bf
+*.dat
+*.mgm
+*.dds
+*.mft
+*.big
+*.fat
+*.bik
+*.exe
+*.dll
+*.bak
+*.log
