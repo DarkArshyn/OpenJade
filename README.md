@@ -30,6 +30,13 @@ The information presented here reflects the current state of research. It does n
 | BIG v37 / prince.bf | Numeric index, names, offsets, stored lengths and raw metadata | [38 checks](docs/observations/2026-10-09-big-metadata.md); 3,308 names and matching metadata lengths |
 | BIG compression assessment | Bounded block-chain candidates, declared sizes and remaining-byte evidence | [34 checks](docs/observations/2026-10-09-big-compression.md); 3,302 candidates; no codec validation |
 | POP-LZO decoding | Classic LZO1X and verbatim blocks; stored bytes and tails preserved | [120 checks](docs/observations/2026-10-13-lzo.md); 7,442 compressed blocks agree with official miniLZO |
+| Menu DDS textures | Single-level DXT1/DXT5 decoding, transparent PNGs and inspection previews | [96 checks](docs/observations/2026-10-13-dds-logo.md); 63 real textures match Pillow pixel for pixel |
+| MFT font data | Fixed-record reader, raw metrics and grayscale atlas export | [59 checks](docs/observations/2026-10-13-mft.md); 12 fonts, 2,688 records; text layout unverified |
+| Experimental MFT text | ASCII specimens with traceable glyph placements and explicit layout hypotheses | [39 checks](docs/observations/2026-10-13-mft-text.md); layout remains experimental |
+| Main-menu text comparison | Six labels reconstructed at 800x600 and compared with a supplied capture | [Placement and contour experiment](docs/observations/2026-10-13-menu-comparison.md); approximate agreement, pixel fidelity unverified |
+| Static menu prototype | Logo plus six MFT labels at 800x600; twelve style variants compared | [Prototype experiment](docs/observations/2026-10-13-menu-prototype.md); offline PNG only, exact styling unverified |
+| Interactive research viewer | Fixed-size window, keyboard/mouse selection and simulated actions | [Viewer validation](docs/observations/2026-10-13-menu-viewer.md); navigation tests and Windows GUI smoke test passed |
+| Viewer state colors | MGM-driven enabled, selected, hover, pressed and disabled palettes | [State checks](docs/observations/2026-10-13-viewer-states.md); six palettes verified, event behavior remains experimental |
 | External research | Pinned sources checked against local data | [Swyter/poptools](references/poptools.md) and [FulGerNet/pop-bf-lab](references/pop-bf-lab.md) |
 
 Counts refer to the recorded test runs, not to a new test execution whenever
@@ -38,27 +45,43 @@ this README is edited. Tested source game files remained unchanged.
 ### Next milestones, in order
 
 > [!IMPORTANT]
-> **Current focus: menu textures and fonts for one screen**
+> **Current focus: the main menu's MFT font**
 >
-> Decoding has been checked on all 3,302 recognized PC GOG envelopes.
-> Select the DDS/MFT resources needed by one menu screen and verify their
-> interpretation before implementing a first renderer.
+> The main-menu logo texture is decoded and its MGM reference verified.
+> The viewer supports experimental input and reads state colors from the MGM.
+> Next: compare state behavior with the original game and investigate transitions.
 
 | Milestone | Deliverable / completion criterion | Current status |
 | --- | --- | --- |
 | 1. BIG extraction | Extract a resource by numeric ID into a new directory; preserve stored bytes and record name, range, size and SHA-256 | Implemented; [42 checks](docs/observations/2026-10-09-big-extraction.md), including two real resources |
 | 2. Compression | Identify candidate compressed blocks and validate decompression separately, retaining traceability to stored bytes | Implemented for recognized POP envelopes; [differential validation](docs/observations/2026-10-13-lzo.md) on all 3,302 candidates |
-| 3. Menu textures and fonts | Decode the DDS/MFT data required by a selected screen and verify its interpretation | Paths identified; decoders not implemented |
+| 3. Menu textures and fonts | Decode the DDS/MFT data required by a selected screen and verify its interpretation | DDS preview verified; MFT atlas and raw metrics exported; font layout remains unverified |
 | 4. One screen's behavior | Document layout, dimensions, colors, draw order and dependencies against observations of the original game | Structural data available; behavior not established |
-| 5. First rendered screen | Display one reconstructed menu screen using the project's own rendering code and extracted game resources | Not started |
-| 6. Interactive menu | Reproduce selection, input, navigation and transitions for that screen | Not started |
+| 5. First rendered screen | Display one reconstructed menu screen using the project's own rendering code and extracted game resources | Partial: static logo/text prototype displayed in a desktop viewer; 3D background absent |
+| 6. Interactive menu | Reproduce selection, input, navigation and transitions for that screen | Experimental viewer navigation and simulated actions; original behavior and transitions not reproduced |
 | 7. Game systems | Investigate and implement required scene, object, animation, collision, audio and gameplay systems with tests | Not started; full scope remains to be established |
 | 8. Native ports | Build and validate the independent implementation on Linux/macOS | Not started |
 
-Keep Windows PowerShell 5.1 for the current research tools. Revisit the runtime
-language when display or execution requirements justify it. After extraction,
-focus on selected resources and a visible menu milestone rather than expanding
-analysis tools without a functional target.
+Windows PowerShell 5.1 remains the primary interface for research tools and
+orchestration. Complementary languages are already used where processing and
+display requirements call for them:
+- C# helpers handle binary decoding and image export.
+- Python with Pillow and NumPy supports image analysis, comparison and prototype assembly.
+- Python with tkinter provides the experimental desktop viewer.
+
+These choices meet current research needs; the language and architecture
+of the future independent game runtime have not been decided. Continue to focus
+on selected resources and visible menu milestones.
+
+The future runtime must target Windows, Linux and macOS with a shared codebase
+and minimal platform-specific changes. Language selection must account for
+portable graphics, window/input handling, audio, build tooling and dependencies,
+not just language availability. Platform-specific integration should remain
+isolated.
+
+The current Windows research environment and Python viewer do not
+establish runtime portability; builds and behavior will need validation on all
+three operating systems before support can be claimed.
 
 ### Progress indicators and limits
 
@@ -71,7 +94,7 @@ are not a percentage of engine implementation.
 | BIG entries with accepted names | 3,308 / 3,308 — 100% of this check |
 | BIG metadata lengths matching block prefixes | 3,308 / 3,308 — 100% of this check |
 | Material/font references with unique local declarations in the three tested MGM files | 199 / 199 — 100% of this check |
-| Independent display and game execution | Not started |
+| Independent display and game execution | Experimental logo/text viewer available; game execution not implemented |
 
 These ratios do not establish full understanding of a format, verified font
 contents, rendering fidelity or support for another game/platform/build.
@@ -115,7 +138,7 @@ open BF inputs for reading only. Do not use `game` for output.
 | `game` | Local read-only game data; excluded from Git |
 
 > [!NOTE]
-> The extracted game is located in the directory : `game\TSoT-GOG`
+> The extracted game is located in the directory: `game\TSoT-GOG`
 
 ## Current scope
 
@@ -181,7 +204,8 @@ $links.Elements | Format-Table ElementType, ElementName, ReferenceName, Referenc
 Open `references.txt` for readable chains, or `elements.csv` and `links.csv`
 for node IDs, byte offsets and evidence. Exact local names, case differences,
 missing or ambiguous references and font filename candidates are distinguished.
-No texture or font decoder is included. See `docs/formats/MGM-resource-links.md`.
+The link resolver does not decode textures or fonts. Texture previews are
+available separately below. See `docs/formats/MGM-resource-links.md`.
 
 ## Main BIG archive inspection
 
@@ -255,7 +279,22 @@ This handles recognized POP envelopes, not every binary resource. See
 [the format contract](docs/formats/POP-LZO.md), [verification results](docs/observations/2026-10-13-lzo.md)
 and [optional reference tests](references/lzo.md).
 
-All source comments, help and new project documentation are in English.
+## Menu texture previews
+
+The extracted textures are under `menu/texture` and MFT fonts under `menu/fonts`.
+The main menu's Logo element references the POP material and `texture/pop.dds`.
+
+```powershell
+.\tools\Export-DDSPreview.ps1 -Path .\reports\POPData-extracted\menu\texture\pop.dds -OutputDirectory .\reports\logo-preview
+.\tests\Test-DDSPreview.ps1
+# Optional: inspect every extracted texture without changing it.
+.\tests\Test-DDSPreview.ps1 -TextureDirectory .\reports\POPData-extracted\menu\texture
+```
+
+`texture.png` preserves transparency; `preview.png` uses a checkerboard to make
+it visible. The original DDS and a hash manifest are retained. Only single-level
+2D DXT1/DXT5 is supported. This is a texture preview, not a reconstructed menu.
+See [the DDS contract](docs/formats/DDS.md) and [logo provenance and validation](docs/observations/2026-10-13-dds-logo.md).
 
 See `docs/decisions/0001-foundation.md` and `docs/formats/BF.md`.
 
