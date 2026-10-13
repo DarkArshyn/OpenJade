@@ -23,3 +23,6 @@ pairs and 0x20000 block limit as hypotheses for an independently written
 structural probe. [Local observations](../docs/observations/2026-10-09-big-compression.md)
 support candidate envelopes, not codec correctness. No upstream decoder or
 binary dependency was copied, executed or installed.
+
+Update 2026-10-13: [OpenJade's separate decoder validation](../docs/observations/2026-10-13-lzo.md)
+compares against official miniLZO, not the decoder from this project.

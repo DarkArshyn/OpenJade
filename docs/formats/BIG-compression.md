@@ -60,6 +60,10 @@ without these markers or with different framing is outside this probe.
 
 ## Next validation gate
 
+Update 2026-10-13: the following gate has been exercised by the separate
+[POP-LZO decoder](POP-LZO.md), with [recorded differential results](../observations/2026-10-13-lzo.md).
+This structural probe retains its original non-decoding contract.
+
 Before exposing decompression, validate an independent LZO1X decoder using
 known vectors and an independent implementation. Test truncated input, invalid
 back-references, output limits, end markers, exact consumed lengths and exact

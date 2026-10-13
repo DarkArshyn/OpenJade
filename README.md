@@ -11,7 +11,7 @@ Native Windows, Linux, and macOS support is a long-term objective and is not cur
 - **Implementation status:** Research tools are being developed incrementally. Some archive inspection, extraction, and resource analysis capabilities have been implemented and tested. The independent game runtime and renderer have not yet entered development.
 - **Date format:** `YYYY-MM-DD` (ISO 8601).
 
-## Roadmap — 2026-10-09
+## Roadmap — 2026-10-13
 
 - **Reference dataset:** *Prince of Persia: The Sands of Time* (PC GOG edition).
 - **Current status:** Research tools are under development. Work on an independent game runtime and renderer has not yet begun.
@@ -29,6 +29,7 @@ The information presented here reflects the current state of research. It does n
 | Menu resource links | Local material/font name resolution and resource path matching | [44 checks](docs/observations/2026-10-09-mgm-links.md); 199 local name references resolved; MFT files remain filename candidates |
 | BIG v37 / prince.bf | Numeric index, names, offsets, stored lengths and raw metadata | [38 checks](docs/observations/2026-10-09-big-metadata.md); 3,308 names and matching metadata lengths |
 | BIG compression assessment | Bounded block-chain candidates, declared sizes and remaining-byte evidence | [34 checks](docs/observations/2026-10-09-big-compression.md); 3,302 candidates; no codec validation |
+| POP-LZO decoding | Classic LZO1X and verbatim blocks; stored bytes and tails preserved | [120 checks](docs/observations/2026-10-13-lzo.md); 7,442 compressed blocks agree with official miniLZO |
 | External research | Pinned sources checked against local data | [Swyter/poptools](references/poptools.md) and [FulGerNet/pop-bf-lab](references/pop-bf-lab.md) |
 
 Counts refer to the recorded test runs, not to a new test execution whenever
@@ -37,16 +38,16 @@ this README is edited. Tested source game files remained unchanged.
 ### Next milestones, in order
 
 > [!IMPORTANT]
-> **Current focus: validating a decompression implementation**
+> **Current focus: menu textures and fonts for one screen**
 >
-> Structural inspection found 3,302 candidate block envelopes in the PC GOG
-> archive. Validate an independent LZO1X decoder before interpreting those
-> resources. No decompression is currently implemented.
+> Decoding has been checked on all 3,302 recognized PC GOG envelopes.
+> Select the DDS/MFT resources needed by one menu screen and verify their
+> interpretation before implementing a first renderer.
 
 | Milestone | Deliverable / completion criterion | Current status |
 | --- | --- | --- |
 | 1. BIG extraction | Extract a resource by numeric ID into a new directory; preserve stored bytes and record name, range, size and SHA-256 | Implemented; [42 checks](docs/observations/2026-10-09-big-extraction.md), including two real resources |
-| 2. Compression | Identify candidate compressed blocks and validate decompression separately, retaining traceability to stored bytes | Candidate envelopes inspected; [34 checks](docs/observations/2026-10-09-big-compression.md); decoder not implemented |
+| 2. Compression | Identify candidate compressed blocks and validate decompression separately, retaining traceability to stored bytes | Implemented for recognized POP envelopes; [differential validation](docs/observations/2026-10-13-lzo.md) on all 3,302 candidates |
 | 3. Menu textures and fonts | Decode the DDS/MFT data required by a selected screen and verify its interpretation | Paths identified; decoders not implemented |
 | 4. One screen's behavior | Document layout, dimensions, colors, draw order and dependencies against observations of the original game | Structural data available; behavior not established |
 | 5. First rendered screen | Display one reconstructed menu screen using the project's own rendering code and extracted game resources | Not started |
@@ -237,6 +238,22 @@ These are structural observations, not validated decompression. Unknown
 resources are not assumed uncompressed, and trailing bytes are not discarded.
 See [the probe contract](docs/formats/BIG-compression.md) and
 [recorded evidence](docs/observations/2026-10-09-big-compression.md).
+
+## POP-LZO decoding
+
+```powershell
+.\tools\Extract-BIG.ps1 -Path .\game\TSoT-GOG\prince.bf -Id '0xFD3F0142' -OutputDirectory .\reports\lzo-input
+.\tools\Expand-POPLzo.ps1 -Path .\reports\lzo-input\FD3F0142.stored.bin -OutputDirectory .\reports\lzo-decoded
+.\tests\Test-POPLzo.ps1
+```
+
+The decoder writes `source.stored.bin`, `decoded.bin`, `trailing.bin` and
+`decoding.json` into a new directory. Stored and trailing bytes remain intact.
+PowerShell 5.1 compiles the small C# decoder locally; no external codec is
+needed for normal use. Input and decoded output are each capped at 64 MiB.
+This handles recognized POP envelopes, not every binary resource. See
+[the format contract](docs/formats/POP-LZO.md), [verification results](docs/observations/2026-10-13-lzo.md)
+and [optional reference tests](references/lzo.md).
 
 All source comments, help and new project documentation are in English.
 
