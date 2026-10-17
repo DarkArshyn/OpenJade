@@ -391,6 +391,16 @@ The controller investigation also separates identifier words from float values.
 - [camera projection experiment](docs/observations/2026-10-17-camera-projection.md)
 - [Camera-linked field tables](docs/observations/2026-10-17-camera-controllers.md)
 
+- [Camera02 CF1 sequence](docs/observations/2026-10-17-camera-cf1.md): 32 byte/float-triplet records; leading bytes sum to the stored value 512. Track semantics and timing remain unverified.
+
+- [CF1 packed-rotation candidates](docs/observations/2026-10-17-camera-cf1-prefix.md): four near-unit quaternion candidates; size-like words make the earlier timing hypothesis ambiguous. Camera composition remains unknown.
+
+- [Camera comparison and global-resource lead](docs/observations/2026-10-17-camera-comparison.md): targeted comparison found CameraAndGlobal referenced by the Menu3D WOL; no second complete CF1 encoding confirmed. Duplicate keys are retained by the new inventory tool.
+
+- [Global camera instance and definition links](docs/observations/2026-10-17-global-camera-links.md): three matching field identifiers have different instance/definition values; runtime effects and the secondary encoding remain unknown.
+
+- [Global camera field-use candidates](docs/observations/2026-10-17-global-camera-field-uses.md): six offset/type matches in three linked behavior blocks; instruction semantics and camera effects remain unverified.
+
 The linked observations contain sample hashes, offsets, commands and local report
 names. Reports are excluded from Git; their absence in a fresh checkout is expected.
 
@@ -426,3 +436,8 @@ actual builds and behavior must be tested before platform support is claimed.
 See [foundation decisions](docs/decisions/0001-foundation.md),
 [external research provenance](references), and the
 [license and legal disclaimer](README.md#license--legal-disclaimer).
+
+
+
+
+
