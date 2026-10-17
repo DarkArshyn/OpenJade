@@ -7,6 +7,8 @@ from pathlib import Path
 import tkinter as tk
 from types import SimpleNamespace
 from PIL import Image, ImageTk
+from options_viewer import OptionsWindow
+from styled_menu_pages import StyledMenuPages
 
 
 def state_for(index, selected, hover, pressed, disabled=False):
@@ -85,6 +87,8 @@ def load_assets(directory):
 class Viewer:
     def __init__(self, root, directory):
         self.root = root
+        self.directory = directory
+        self.options_window = None
         self.rows, background = load_assets(directory)
         self.selection = Selection(len(self.rows))
         self.hover = None
@@ -213,8 +217,18 @@ class Viewer:
         if self.disabled.get():
             return 'break'
         row = self.rows[self.selection.index]
+        if row['name']=='Options':
+            if self.options_window is None:
+                self.reset_input()
+                window_class=StyledMenuPages if (self.directory/'menus-assets'/'catalog.json').exists() else OptionsWindow
+                self.options_window=window_class(self.root,self.directory,self.options_closed)
+            return 'break'
         self.status.set('Simulated action: '+row['text']+' ['+row['name']+']. No game action performed.')
         return 'break'
+
+    def options_closed(self):
+        self.options_window=None
+        self.canvas.focus_set()
 
     def close(self):
         if not self.closed:
@@ -259,6 +273,40 @@ def main():
         viewer.navigate(1)
         viewer.activate()
         assert viewer.status.get()==previous
+        viewer.disabled.set(False)
+        viewer.selection.choose(2)
+        viewer.activate()
+        assert viewer.options_window is not None
+        panel=viewer.options_window
+        if isinstance(panel,StyledMenuPages):
+            panel.activate_entry('Video')
+            panel.activate_entry('Item1_Choice2')
+            assert panel.model.values[('effects','Item1')]=='Medium'
+            panel.activate_entry('Basic')
+            panel.activate_entry('Item1_Choice1')
+            assert panel.model.values[('advanced','Item1')]=='Trilinear'
+            panel.back();panel.activate_entry('Controls')
+            panel.activate_entry('Key_1_1','Z')
+            panel.activate_entry('Gamepad')
+            panel.activate_entry('Key_1_1','B2')
+            panel.activate_entry('Keyboard')
+            assert panel.model.bindings[('keyboard','Key_1_1')]=='Z'
+            panel.back();panel.back()
+            assert viewer.options_window is None
+            viewer.close()
+            print('GUI smoke test passed: five menu pages, choices, separate bindings, return and disposal.')
+            return
+        panel.show_effects()
+        assert len(panel.variables)==4
+        panel.model.choose('Item1','Item1_Choice2')
+        panel.back()
+        panel.show_effects()
+        assert panel.variables['Item1'].get()=='Item1_Choice2'
+        panel.clear()
+        assert all(v is None for v in panel.model.values.values())
+        panel.back()
+        panel.back()
+        assert viewer.options_window is None
         viewer.close()
         print('GUI smoke test passed: assets, widgets, navigation, simulated action and disposal.')
     else:

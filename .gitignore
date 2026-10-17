@@ -3,6 +3,7 @@
 /OLD-Archive/
 /reports/*
 !/reports/README.md
+/src/__pycache__
 # Do not publish extracted assets from any working directory.
 *.bf
 *.dat
