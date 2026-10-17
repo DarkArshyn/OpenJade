@@ -11,6 +11,7 @@ necessarily the status of the latest implementation. Game resources remain read-
 - Windows and Windows PowerShell **5.1** for command scripts and orchestration.
 - C# helpers compiled locally by PowerShell for binary decoding and image export.
 - Python with **Pillow**, **NumPy** and **tkinter** for analysis and the desktop viewer.
+- Optional native analysis: Ghidra 12.1.4, full JDK 21 and a Java evidence-export script; see [setup](#native-camera-analysis).
 - English source comments and documentation.
 - Dates use `YYYY-MM-DD` (ISO 8601).
 
@@ -401,8 +402,26 @@ The controller investigation also separates identifier words from float values.
 
 - [Global camera field-use candidates](docs/observations/2026-10-17-global-camera-field-uses.md): six offset/type matches in three linked behavior blocks; instruction semantics and camera effects remain unverified.
 
+- [Camera behavior token boundaries](docs/observations/2026-10-17-camera-behavior-tokens.md): three bounded eight-byte token areas align the six field candidates; two blocks share a 96-byte sequence. Opcode semantics remain unknown.
+
+- [Vector motif and native follow-up](docs/observations/2026-10-17-camera-native-followup.md): repeated triplet-field motif and three native diagnostic-string leads; REA reviewed as tooling, not an opcode reference. Interpreter semantics remain unverified.
+
 The linked observations contain sample hashes, offsets, commands and local report
 names. Reports are excluded from Git; their absence in a fresh checkout is expected.
+
+## Native camera analysis
+
+Portable Ghidra and JDK installations support static analysis of a verified
+executable copy. See [installation and launch instructions](docs/decisions/native-analysis-setup.md)
+and [confirmed entry-point evidence](docs/observations/2026-10-17-native-camera-entry-points.md).
+Three diagnostic references resolve to two functions; variable loading and
+reference fixups are the current leads. The camera interpreter and token
+semantics remain unverified. No original game code is executed by this workflow.
+
+`tools/Invoke-NativeCameraAnalysis.ps1` invokes the independent Java export script
+in `tools/ghidra/`. Executable copies, databases and recovered code remain local
+under ignored `reports/`; these optional dependencies are not needed for the menu
+simulation. Original game files remain read-only.
 
 ## Testing and evidence
 
@@ -436,6 +455,9 @@ actual builds and behavior must be tested before platform support is claimed.
 See [foundation decisions](docs/decisions/0001-foundation.md),
 [external research provenance](references), and the
 [license and legal disclaimer](README.md#license--legal-disclaimer).
+
+
+
 
 
 

@@ -45,6 +45,7 @@ and [local preview workflow](README-dev.md#menu-simulation).
 | Resources | Inspect MGM structure/materials, resolve menu links, preview DDS and MFT data | Selected formats and sample-specific interpretations |
 | Menu simulation | Ten screens, navigation, session profiles, settings and confirmations | No gameplay, persistent profiles or actual hardware configuration |
 | 3D research | Selected mesh/UV/material experiments and camera-linked field inspection | Offline diagnostics; original rendering and camera behavior unverified |
+| Native research | Static executable analysis and three confirmed diagnostic references | Camera instruction semantics remain unverified |
 | Validation | Synthetic tests and recorded comparisons against local game data | Results do not establish complete format or engine coverage |
 
 Detailed scope and evidence: [research status and validation](README-dev.md#research-status-and-validation).
@@ -102,3 +103,4 @@ OpenJade is licensed under the GNU General Public License v3.0 or later
 
 > [!NOTE]
 > This is a hobby project, and no completion date is planned at this time. Any project contributions are welcome 😊
+
