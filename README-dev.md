@@ -1,6 +1,6 @@
 # OpenJade developer guide
 
-[Project overview](README.md) · Research snapshot: **2026-10-17**
+[Project overview](README.md) · Research snapshot: **2026-10-20**
 
 This guide describes the Windows research tools and experimental menu simulation.
 Dated observation records preserve earlier experiments; their limitations are not
@@ -61,7 +61,7 @@ Both `README.md` and `README-dev.md` live at the repository root. The future
 | Additional menu scenes | Resource-based Options, Advanced, Keyboard and Gamepad pages with simulated choices and binding labels | [Five-page viewer](docs/observations/2026-10-13-menu-pages.md); screenshot text substitutions recorded, no device configuration |
 | DDS navigation widgets | Linked arrows, slider bars, minus/plus buttons and selectors with bounded interactions | [Widget experiment](docs/observations/2026-10-13-menu-widgets.md); raw MGM ranges, no real settings applied |
 | Menu simulation | Ten screenshot-based screens, session profiles, complete 18-action list, settings and confirmations | [Simulation scope and launch command](docs/observations/2026-10-16-complete-menu-simulation.md); model/render checks and GUI smoke test |
-| External research | Pinned sources checked against local data | [Swyter/poptools](references/poptools.md) and [FulGerNet/pop-bf-lab](references/pop-bf-lab.md) |
+| External research | Pinned sources checked against local data | [Swyter/poptools](references/poptools.md), [FulGerNet/pop-bf-lab](references/pop-bf-lab.md), and [hogsy/jaded](references/jaded.md) |
 
 The table includes earlier experiments as well as the current simulation; limitations
 in older observation records describe those earlier stages.
@@ -414,7 +414,7 @@ names. Reports are excluded from Git; their absence in a fresh checkout is expec
 Portable Ghidra and JDK installations support static analysis of a verified
 executable copy. See [installation and launch instructions](docs/decisions/native-analysis-setup.md)
 and [confirmed entry-point evidence](docs/observations/2026-10-17-native-camera-entry-points.md).
-Three diagnostic references resolve to two functions; variable loading and
+The initial three diagnostic references resolve to two functions; variable loading and
 reference fixups are the current leads. The camera interpreter and token
 semantics remain unverified. No original game code is executed by this workflow.
 
@@ -422,6 +422,24 @@ semantics remain unverified. No original game code is executed by this workflow.
 in `tools/ghidra/`. Executable copies, databases and recovered code remain local
 under ignored `reports/`; these optional dependencies are not needed for the menu
 simulation. Original game files remain read-only.
+
+Latest: [dynamic function table and callers](docs/observations/2026-10-18-native-function-table.md). Three direct resolver callers, descriptor construction/lookup/cleanup, and an execution consumer have been inspected. The descriptor registry is distinct from the category-dispatch table; camera token meanings remain unverified.
+
+Latest category evidence: [dispatch mapping and vector-copy motif](docs/observations/2026-10-18-category-dispatch.md). Serialized IDs are remapped before execution. A selected three-word copy handler supports field-to-local copying in two camera-resource motifs; execution and camera-transform effects remain unverified.
+
+Latest flow evidence: [local vector and callers](docs/observations/2026-10-18-local-vector-flow.md). The two field-copy motifs are alternative paths in dynamic function 5755; its selected vector is returned, then copied or added by two callers. The upstream 5b82 calculation and actual camera effects remain unresolved.
+
+Latest continuation: [vector descriptors and consumers](docs/observations/2026-10-18-vector-consumers.md). Signatures for 5b82/5b83 are located; the sum passes through 5b83 and feeds a vector subtraction. Two linked tables are ambiguous, and the function bodies and coordinate space remain unresolved.
+
+Latest resolution: [5b82/5b83 bodies and balcony-object links](docs/observations/2026-10-19-camera-function-bodies.md). Both bodies are located in Menu3D record B60024E5 and linked to the populated 263c/005d descriptor table. Shared balcony-camera behavior is established; active camera, field meaning and full 5b83 arithmetic remain unverified.
+
+Latest arithmetic: [balcony vector bounds](docs/observations/2026-10-19-balcony-vector-bounds.md). Function 5b83 conditionally bounds each component; both balcony instances select mode 2. Runtime initialization of the gate and limits, active camera and coordinate space remain unknown.
+
+Latest writes: [bounds-writing callback](docs/observations/2026-10-19-bounds-writers.md). Callback index 5 links to four confirmed writes of fields 464/512. No direct writer for 172/276 was found in the eight linked blocks; live initialization and activation remain unresolved.
+
+External comparison: [Jaded bounding volumes](references/jaded.md), pinned to revision `8d55704c80adfcec4f3bcaeb2445dc9f68ef960e`. Its initial-limit fields and OBBox flag corroborate the observed TSoT layout. Editor-dependent fields and a different sphere predicate prevent assuming binary compatibility. Jaded is a later Ubisoft-derived reference; no source code is imported, and reuse permission has not been established. Activation and coordinate space still require TSoT evidence.
+
+Latest serialized source: [balcony geometry](docs/observations/2026-10-20-balcony-geometry.md). Both balcony GAOs contain the paired triplets loaded into the structure read by operations 2bc3/2bc5. A targeted inspector preserves their offsets and raw bytes; activation, subsequent mutation and runtime coordinate space remain unresolved.
 
 ## Testing and evidence
 
@@ -455,6 +473,13 @@ actual builds and behavior must be tested before platform support is claimed.
 See [foundation decisions](docs/decisions/0001-foundation.md),
 [external research provenance](references), and the
 [license and legal disclaimer](README.md#license--legal-disclaimer).
+
+
+
+
+
+
+
 
 
 

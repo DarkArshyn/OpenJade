@@ -45,7 +45,7 @@ and [local preview workflow](README-dev.md#menu-simulation).
 | Resources | Inspect MGM structure/materials, resolve menu links, preview DDS and MFT data | Selected formats and sample-specific interpretations |
 | Menu simulation | Ten screens, navigation, session profiles, settings and confirmations | No gameplay, persistent profiles or actual hardware configuration |
 | 3D research | Selected mesh/UV/material experiments and camera-linked field inspection | Offline diagnostics; original rendering and camera behavior unverified |
-| Native research | Static executable analysis and three confirmed diagnostic references | Camera instruction semantics remain unverified |
+| Native research | Ghidra static analysis, dispatch mappings and selected vector data flow | Selected operations understood; camera behavior remains unverified |
 | Validation | Synthetic tests and recorded comparisons against local game data | Results do not establish complete format or engine coverage |
 
 Detailed scope and evidence: [research status and validation](README-dev.md#research-status-and-validation).
@@ -65,6 +65,9 @@ See [milestones and validation criteria](README-dev.md#roadmap-and-milestones).
 ## Getting started
 
 Use Windows, Windows PowerShell 5.1, and Python with Pillow, NumPy and tkinter.
+C# helpers support resource decoding. Ghidra with a compatible JDK is also used
+for optional static analysis of the game executable; it is not required to run
+the menu simulation. See the [native analysis setup](docs/decisions/native-analysis-setup.md).
 
 You need your own [PC GOG game](https://www.gog.com/game/prince_of_persia_the_sands_of_time) data and a generated prototype report.
 For a fresh checkout, follow the [local setup and asset preparation](README-dev.md#getting-started).
@@ -103,4 +106,5 @@ OpenJade is licensed under the GNU General Public License v3.0 or later
 
 > [!NOTE]
 > This is a hobby project, and no completion date is planned at this time. Any project contributions are welcome 😊
+
 

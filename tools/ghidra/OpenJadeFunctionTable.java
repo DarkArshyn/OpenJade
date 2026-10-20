@@ -1,0 +1,69 @@
+// Export references to the dynamic-function resolver, descriptor table and count.
+// Generated assembly and decompiler output must remain in excluded local reports.
+import ghidra.app.script.GhidraScript;
+import ghidra.app.decompiler.*;
+import ghidra.program.model.address.*;
+import ghidra.program.model.listing.*;
+import ghidra.program.model.symbol.*;
+import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+public class OpenJadeFunctionTable extends GhidraScript {
+    public void run() throws Exception {
+        if (!"6587d499f4ea6d0895179f74487045bc2c82a9d4e08a0a5046c1fb88ee3b6ec9".equalsIgnoreCase(currentProgram.getExecutableSHA256())) throw new IllegalArgumentException("Unsupported program hash");
+        if (currentProgram.getImageBase().getOffset() != 0x400000L) throw new IllegalArgumentException("Unexpected image base");
+        String[] args = getScriptArgs();
+        if (args.length < 1) throw new IllegalArgumentException("Expected new output directory and optional hexadecimal targets");
+        Path out = Paths.get(args[0]);
+        Files.createDirectory(out);
+        StringBuilder evidence = new StringBuilder();
+        evidence.append("Program: ").append(currentProgram.getName()).append("\nLanguage: ")
+            .append(currentProgram.getLanguageID()).append("\nImage base: ").append(currentProgram.getImageBase()).append("\n");
+        long[] addresses = {0x00463e10L,0x00a8d380L,0x00abc944L};
+        if (args.length > 1) { addresses = new long[args.length-1]; for (int i=1;i<args.length;i++) addresses[i-1]=Long.parseUnsignedLong(args[i].replaceFirst("^0[xX]", ""),16); }
+        Set<Function> functions = new LinkedHashSet<>();
+        for (long value : addresses) {
+            Address target = toAddr(value);
+            evidence.append("\nTARGET ").append(target).append("\n");
+            ReferenceIterator refs = currentProgram.getReferenceManager().getReferencesTo(target);
+            while (refs.hasNext()) {
+                Reference ref=refs.next();
+                Instruction ins=currentProgram.getListing().getInstructionContaining(ref.getFromAddress());
+                Function fun=getFunctionContaining(ref.getFromAddress());
+                evidence.append(ref.getFromAddress()).append(" ").append(ref.getReferenceType())
+                    .append(" instruction=").append(ins).append(" function=")
+                    .append(fun == null ? "unknown" : fun.getEntryPoint()).append("\n");
+                if (fun != null) functions.add(fun);
+            }
+        }
+        DecompInterface decompiler=new DecompInterface();
+        if (!decompiler.openProgram(currentProgram)) throw new IllegalStateException("Decompiler unavailable");
+        try {
+            int exported=0;
+            for (Function fun : functions) {
+                if (exported++ >= 16) { evidence.append("Function export limit reached (16).\n"); break; }
+                String id=fun.getEntryPoint().toString();
+                StringBuilder assembly=new StringBuilder();
+                InstructionIterator it=currentProgram.getListing().getInstructions(fun.getBody(),true);
+                int count=0;
+                while (it.hasNext() && count++<2000) {
+                    Instruction ins=it.next();assembly.append(ins.getAddress()).append(" ").append(ins).append("\n");
+                }
+                if (it.hasNext()) assembly.append("TRUNCATED: 2000 instruction limit\n");
+                Files.writeString(out.resolve(id+"-assembly.txt"),assembly.toString(),StandardCharsets.UTF_8);
+                DecompileResults result=decompiler.decompileFunction(fun,60,monitor);
+                evidence.append("\nFUNCTION ").append(id).append(" name=").append(fun.getName())
+                    .append(" decompiled=").append(result.decompileCompleted()).append("\n");
+                if (result.decompileCompleted()) Files.writeString(out.resolve(id+"-decompiled.c"),result.getDecompiledFunction().getC(),StandardCharsets.UTF_8);
+                else evidence.append(result.getErrorMessage()).append("\n");
+            }
+        } finally { decompiler.dispose(); }
+        Files.writeString(out.resolve("references.txt"),evidence.toString(),StandardCharsets.UTF_8);
+        println("OpenJade: exported " + Math.min(functions.size(),16) + " referenced functions to " + out);
+    }
+}
+
+
+
+
