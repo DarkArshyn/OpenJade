@@ -437,6 +437,8 @@ Latest arithmetic: [balcony vector bounds](docs/observations/2026-10-19-balcony-
 
 Latest writes: [bounds-writing callback](docs/observations/2026-10-19-bounds-writers.md). Callback index 5 links to four confirmed writes of fields 464/512. No direct writer for 172/276 was found in the eight linked blocks; live initialization and activation remain unresolved.
 
+Gate follow-up: [field 276 and operation 1007](docs/observations/2026-10-20-bounds-gate.md). A scoped identifier search finds only the model definition in Menu3D and no occurrence in CameraAndGlobal. The inspected 1007 wrapper/helper shows no direct gate assignment; indirect effects and runtime initialization remain unresolved.
+
 External comparison: [Jaded bounding volumes](references/jaded.md), pinned to revision `8d55704c80adfcec4f3bcaeb2445dc9f68ef960e`. Its initial-limit fields and OBBox flag corroborate the observed TSoT layout. Editor-dependent fields and a different sphere predicate prevent assuming binary compatibility. Jaded is a later Ubisoft-derived reference; no source code is imported, and reuse permission has not been established. Activation and coordinate space still require TSoT evidence.
 
 Latest serialized source: [balcony geometry](docs/observations/2026-10-20-balcony-geometry.md). Both balcony GAOs contain the paired triplets loaded into the structure read by operations 2bc3/2bc5. A targeted inspector preserves their offsets and raw bytes; activation, subsequent mutation and runtime coordinate space remain unresolved.
