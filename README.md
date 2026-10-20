@@ -1,5 +1,9 @@
 # OpenJade
 
+<p align="center">
+  <img src="src/img/openjade-banner.jpg" width="100%">
+</p>
+
 ## About the project
 
 OpenJade is an independent research project aimed at reimplementing
