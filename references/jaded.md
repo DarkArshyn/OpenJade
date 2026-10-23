@@ -55,3 +55,8 @@ the interpretation of the stored pairs as initial box limits.
 
 No runtime change follows from this comparison. Field 276 activation, later
 bound updates, callback timing and the active camera remain unresolved.
+
+## Fog comparison (2026-10-21)
+
+The pinned MATerial/MATstruct.h and backends/dx9/DX9renderstate.c were used as search aids. TSoT's own native material loader, draw setup and Direct3D state emitter were then inspected. The color-selector shift differs (TSoT uses 13), so later header definitions are not assumed compatible. No external source was imported. See [native fog evidence](../docs/observations/2026-10-21-native-fog-state.md).
+

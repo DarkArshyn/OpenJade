@@ -27,6 +27,9 @@ profiles and settings are lost on exit. It does not execute the original game.
 
 Separate offline 3D experiments investigate selected courtyard objects,
 including the balcony, through diagnostic geometry and texture renders.
+Three textured fog panels now use native-verified scale and material-state findings.
+Targeted landmark fitting and a traced dynamic vertex-color upload path provide
+additional checks; they do not yet validate the complete scene.
 These experiments are not integrated into the menu; the original camera,
 lighting, fog and complete scene behavior remain unverified.
 

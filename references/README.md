@@ -10,6 +10,9 @@
 - External engine comparison: see [hogsy/jaded](jaded.md) for the pinned upstream revision,
   provenance limitations, and the initial comparison of bounding-volume structures against native TSoT evidence.
 - Binary-analysis tooling: see [morluto/rea](rea.md) for the reviewed upstream documentation, potential Ghidra integration, setup constraints, and limitations of the assessment.
+- External 3D asset-format reference: see [kugelrund/io_scene_pop](io-scene-pop.md) for the pinned Blender importer revision,
+GAO geometry/material-pack link hypotheses, and independent validation against the frozen local Menu3D resource.
+Importer behavior is treated as format evidence, not proof of original rendering semantics.
 
 Ownership or absence of DRM is not inferred from a directory name. No game
 files belong in this directory or in source publication. Generated hashes and

@@ -1,0 +1,13 @@
+{
+  "reference": "User-provided 02 - MenuPrincipal.png, French GOG menu, 800x600",
+  "preview": "menu-material-colors-20261021/fixed-camera.png",
+  "previous_camera": [12, -1, 50],
+  "method": "Manual approximate feature correspondences. Uncertainty is an estimated tolerance, not a measured statistical standard deviation. No geometry is moved.",
+  "landmarks": [
+    {"name": "Balcony central decorative apex", "preview_pixel": [345,115], "reference_pixel": [332,154], "uncertainty_pixels": 8},
+    {"name": "Balcony curtain upper left", "preview_pixel": [318,153], "reference_pixel": [309,191], "uncertainty_pixels": 8},
+    {"name": "Balcony curtain upper right, partial occlusion", "preview_pixel": [378,153], "reference_pixel": [362,191], "uncertainty_pixels": 12},
+    {"name": "Left foreground silhouette candidate (foliage overlap; correspondence ambiguous)", "preview_pixel": [99,425], "reference_pixel": [140,439], "uncertainty_pixels": 20, "use_for_fit": false},
+    {"name": "Right foreground silhouette candidate (foliage overlap; correspondence ambiguous)", "preview_pixel": [582,452], "reference_pixel": [520,442], "uncertainty_pixels": 20, "use_for_fit": false}
+  ]
+}

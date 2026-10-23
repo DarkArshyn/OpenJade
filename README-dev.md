@@ -61,7 +61,7 @@ Both `README.md` and `README-dev.md` live at the repository root. The future
 | Additional menu scenes | Resource-based Options, Advanced, Keyboard and Gamepad pages with simulated choices and binding labels | [Five-page viewer](docs/observations/2026-10-13-menu-pages.md); screenshot text substitutions recorded, no device configuration |
 | DDS navigation widgets | Linked arrows, slider bars, minus/plus buttons and selectors with bounded interactions | [Widget experiment](docs/observations/2026-10-13-menu-widgets.md); raw MGM ranges, no real settings applied |
 | Menu simulation | Ten screenshot-based screens, session profiles, complete 18-action list, settings and confirmations | [Simulation scope and launch command](docs/observations/2026-10-16-complete-menu-simulation.md); model/render checks and GUI smoke test |
-| External research | Pinned sources checked against local data | [Swyter/poptools](references/poptools.md), [FulGerNet/pop-bf-lab](references/pop-bf-lab.md), and [hogsy/jaded](references/jaded.md) |
+| External research | Pinned sources checked against local data | [Swyter/poptools](references/poptools.md), [FulGerNet/pop-bf-lab](references/pop-bf-lab.md), [hogsy/jaded](references/jaded.md), [morluto/rea](references/rea.md), and [kugelrund/io_scene_pop](references/io-scene-pop.md) |
 
 The table includes earlier experiments as well as the current simulation; limitations
 in older observation records describe those earlier stages.
@@ -439,6 +439,8 @@ Latest writes: [bounds-writing callback](docs/observations/2026-10-19-bounds-wri
 
 Gate follow-up: [field 276 and operation 1007](docs/observations/2026-10-20-bounds-gate.md). A scoped identifier search finds only the model definition in Menu3D and no occurrence in CameraAndGlobal. The inspected 1007 wrapper/helper shows no direct gate assignment; indirect effects and runtime initialization remain unresolved.
 
+Current visual milestone: assemble the menu scenery under a fixed camera, shared across menu pages. The user's observation of the original PC game places the balcony camera transition and playable Prince sequence after New Game; these are separate later milestones. Gate 276 research is deferred. The [io_scene_pop comparison](references/io-scene-pop.md) identifies 55 candidate objects with recognized geometry headers and uniquely resolved geometry/material-pack links; this does not yet mean complete or correctly rendered meshes.
+
 External comparison: [Jaded bounding volumes](references/jaded.md), pinned to revision `8d55704c80adfcec4f3bcaeb2445dc9f68ef960e`. Its initial-limit fields and OBBox flag corroborate the observed TSoT layout. Editor-dependent fields and a different sphere predicate prevent assuming binary compatibility. Jaded is a later Ubisoft-derived reference; no source code is imported, and reuse permission has not been established. Activation and coordinate space still require TSoT evidence.
 
 Latest serialized source: [balcony geometry](docs/observations/2026-10-20-balcony-geometry.md). Both balcony GAOs contain the paired triplets loaded into the structure read by operations 2bc3/2bc5. A targeted inspector preserves their offsets and raw bytes; activation, subsequent mutation and runtime coordinate space remain unresolved.
@@ -490,3 +492,37 @@ See [foundation decisions](docs/decisions/0001-foundation.md),
 
 
 
+
+Fixed-camera assembly: [textured menu scene diagnostic](docs/observations/2026-10-20-fixed-menu-scene.md). The new assembler exports 26 objects / 4,026 triangles as OBJ/MTL and an 800x600 preview. Unsupported resources are reported; original lighting, blending and exact camera framing remain unverified.
+
+
+Primary geometry and colors: [colored menu assembly](docs/observations/2026-10-20-colored-menu-scene.md) now renders 39 objects / 6,056 triangles, with stored RGB on 38 objects. A manual one-anchor camera adjustment approaches the supplied screenshot; full framing and native fog/lighting remain unresolved. Sixteen geometry candidates remain excluded.
+
+
+Missing objects and fog: [October 21 experiment](docs/observations/2026-10-21-menu-objects-fog.md) adds the detailed balcony and zero-UV ground, reaching 41 objects / 14,956 triangles. Two existing fog panels have an explicit experimental alpha-blending pass and a baseline comparison. Native fog blending and the third panel's transform remain unresolved.
+
+
+Native fog verification: [transform, blend and constant-color evidence](docs/observations/2026-10-21-native-fog-state.md) enables the third panel (42 objects / 14,960 triangles). The three panels now use verified source-over/no-depth-write flags and material constant color instead of black vertex RGB. Dynamic UV animation and full scene lighting remain unresolved.
+
+
+Fog UV motion: [native-derived time samples](docs/observations/2026-10-21-fog-uv-motion.md) add --fog-time in effective engine seconds. The shared material rate is decoded from its packed UV words; phase zero and forward time are explicit diagnostic choices. This remains an offline renderer, not a live animated menu.
+
+
+Material color dispatch: [per-group color investigation](docs/observations/2026-10-21-material-color-dispatch.md) corrects nine non-fog groups (200 triangles) using native constant-color mode 2. Modes 0 and 3 remain explicitly unresolved lighting approximations. The renderer exports a previous-colors.png comparison and per-group evidence in scene.json.
+
+
+Tree lighting and scene audit: [selected trunk and 42 stored transforms](docs/observations/2026-10-21-tree-lighting-scene-audit.md) identifies the direct instance-color branch for Menu3D_tronc4, which clears the subsequent dynamic-light enable bit for the examined state. A numbered object image and transform report make placement checks reproducible. Native color upload, runtime transforms and exact screenshot framing remain unverified; no global brightness or object-position correction is applied.
+
+
+Camera constraints and GPU upload: [landmark fitting and dynamic vertex transfer](docs/observations/2026-10-21-camera-fit-gpu-upload.md) adds a reproducible three-landmark balcony fit, with two ambiguous foreground candidates explicitly excluded. The dynamic color packing/copy path is traced to Direct3D submission. An opt-in --tree-upload-check preview applies the bounded tronc4 case; default camera and general lighting remain unchanged. Cached-buffer execution and whole-scene alignment remain unverified.
+
+
+External geometry cross-check: [PoP BF Lab comparison, October 22](docs/observations/2026-10-22-pop-bf-lab-geometry-comparison.md) matches all 42 assembled objects against the supplied Jade Z-up OBJ. Triangle counts and ordered corner coordinates agree within 0.000001 scene unit, including the third fog panel. This supports stored geometry; native camera, runtime transforms, UV/material parity and lighting remain separate questions.
+
+
+Native camera matrices: [October 22 static trace](docs/observations/2026-10-22-native-camera-matrices.md) identifies the camera-block rigid inverse, axis-conversion routine and PC projection coefficients, including radian half-angle tangent, aspect branch, vertical sign and fixed depth term. Four synthetic tests cover the independent math module. Active-menu field writers and complete matrix composition remain unresolved; default rendering is unchanged.
+
+
+Active camera writers: [October 23 static trace](docs/observations/2026-10-23-active-camera-writers.md) identifies the attached-object transform callback, the explicit FOV setter and the per-render copy into the camera block. Instruction checks confirm the full matrix copy and angle writes. The menu's selected object and final runtime values remain unverified; renderer defaults are unchanged.
+
+Camera object selection: [pointer setter and callers](docs/observations/2026-10-23-camera-object-selection.md) identifies the write to camera-entry +0x88, two native callers supplying the current logic object, and interpreter handler 30D4. Both native callers set FOV before changing the attachment. The main-menu object identity and live final values remain unverified.
