@@ -33,6 +33,11 @@ additional checks; they do not yet validate the complete scene.
 These experiments are not integrated into the menu; the original camera,
 lighting, fog and complete scene behavior remain unverified.
 
+Static camera analysis now links candidate registration to two named balcony
+zones and traces a conditional position update into the global camera matrix.
+The active menu camera selection and final orientation are not yet established.
+See the [camera vector and position findings](docs/observations/2026-10-24-camera-vector-transfer.md).
+
 The independent game runtime and native Linux/macOS validation remain future work.
 
 ## Prototype preview
@@ -52,7 +57,7 @@ and [local preview workflow](README-dev.md#menu-simulation).
 | Resources | Inspect MGM structure/materials, resolve menu links, preview DDS and MFT data | Selected formats and sample-specific interpretations |
 | Menu simulation | Ten screens, navigation, session profiles, settings and confirmations | No gameplay, persistent profiles or actual hardware configuration |
 | 3D research | Selected mesh/UV/material experiments and camera-linked field inspection | Offline diagnostics; original rendering and camera behavior unverified |
-| Native research | Ghidra static analysis, dispatch mappings and selected vector data flow | Selected operations understood; camera behavior remains unverified |
+| Native research | Ghidra static analysis, named camera-zone links and a conditional camera position path | Live camera selection and final orientation remain unverified |
 | Validation | Synthetic tests and recorded comparisons against local game data | Results do not establish complete format or engine coverage |
 
 Detailed scope and evidence: [research status and validation](README-dev.md#research-status-and-validation).
