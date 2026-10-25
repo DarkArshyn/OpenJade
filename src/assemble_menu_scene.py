@@ -99,6 +99,8 @@ def export(source,out, yaw=12.0, pitch=-1.0, fov=50.0, fog_time=0.0, tree_upload
             mapped=[]
             fog_states=[]
             color_states=[]
+            partial = key in {'0x30000D53', '0x30000F45', '0x3000FCFA'}
+            retained=[]; group_start=0; omitted=[]
             for slot,count in groups:
                 if pack is None:
                     if slot!=0:raise ValueError('Nonzero slot for leaf material')
@@ -106,14 +108,22 @@ def export(source,out, yaw=12.0, pitch=-1.0, fov=50.0, fog_time=0.0, tree_upload
                 else:
                     if slot>=len(pack):raise ValueError('Material slot out of range')
                     leaf=f'0x{pack[slot]:08X}'
+                if partial and len(payload(leaf)) != 48:
+                    omitted.append(dict(material=leaf,triangles=count,reason='Multi-stage material not implemented'))
+                    group_start += count
+                    continue
+                retained.append(tri[group_start:group_start+count])
+                group_start += count
                 mapped.append((material(leaf),count))
                 color_states.append(dict(material=leaf,triangles=count,**color_state(payload(leaf))))
                 if leaf == "0x30000CAB":
                     state=fog_state(payload(leaf));state["motion"]=fog_uv_motion(payload(leaf));fog_states.append(state)
+            if partial:
+                tri=np.concatenate(retained) if retained else np.empty((0,3),dtype=int)
             matrix=np.array(struct.unpack_from('<16f',d,link['matrix_offset'])).reshape(4,4)
-            if not np.isfinite(matrix[:,:3]).all() or (key != "0x30000D38" and not np.allclose(matrix[:3,3],0,atol=1e-6)):
+            if not np.isfinite(matrix[:,:3]).all() or (key not in {"0x30000D38", "0x30000CCE", "0x30000D53", "0x30000F45"} and not np.allclose(matrix[:3,3],0,atol=1e-6)):
                 raise ValueError('Unsupported affine matrix')
-            world=transform_fog_points(v[:,:3],matrix) if key == "0x30000D38" else v[:,:3]@matrix[:3,:3]+matrix[3,:3]
+            world=transform_fog_points(v[:,:3],matrix) if key in {"0x30000D38", "0x30000CCE", "0x30000D53", "0x30000F45"} else v[:,:3]@matrix[:3,:3]+matrix[3,:3]
             is_fog=bool(fog_states) and len(fog_states)==len(mapped)
             if is_fog:
                 colors=np.tile(np.array(fog_states[0]["constant_rgb"])*2/255,(len(v),1))
@@ -127,7 +137,7 @@ def export(source,out, yaw=12.0, pitch=-1.0, fov=50.0, fog_time=0.0, tree_upload
                 color_source='tronc4 loaded-state dynamic upload experiment: recorded RGB x2'
             if not is_fog and any(s["mode"]==2 for s in color_states):color_source="per-group constant x2 / existing vertex approximation"
             objects.append(dict(previous_colors=previous_colors,blend=is_fog,fog_sampler=is_fog,name=link['name'],vertices=world,uv=v[:,3:],triangles=tri,groups=mapped,colors=colors))
-            accepted.append(dict(color_groups=color_states,fog_states=fog_states,scale=matrix[:3,3].tolist() if key == "0x30000D38" else None,key=key,name=link['name'],mesh=link['mesh'],header_offset=layout["vertex_offset"],color_source=color_source,color_offset=color_offset,layout=layout,vertices=len(v),triangles=len(tri),material_pack=link['material_pack']))
+            accepted.append(dict(omitted_groups=omitted,color_groups=color_states,fog_states=fog_states,scale=matrix[:3,3].tolist() if key in {"0x30000D38", "0x30000CCE", "0x30000D53", "0x30000F45"} else None,key=key,name=link['name'],mesh=link['mesh'],header_offset=layout["vertex_offset"],color_source=color_source,color_offset=color_offset,layout=layout,vertices=len(v),triangles=len(tri),material_pack=link['material_pack']))
         except (ValueError,struct.error,IndexError) as error:
             excluded.append(dict(key=key,reason=str(error)))
     if not objects:raise ValueError('No supported objects')

@@ -49,7 +49,7 @@ def raster(objects,textures,position,basis,fov,flip=False):
     focal=height/(2*math.tan(math.radians(fov)/2));drawn=0
     for obj in objects:
         local=(obj['vertices']-position)@basis.T
-        view=np.column_stack((local[:,0],local[:,2],-local[:,1],obj['uv']))
+        view=np.column_stack((-local[:,0],local[:,2],-local[:,1],obj['uv']))
         cursor=0
         for slot,count in obj['groups']:
             tex=textures[slot]

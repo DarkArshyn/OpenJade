@@ -23,7 +23,8 @@ def raster(objects,textures,position,basis,fov,flip=False,blend_enabled=True):
     for obj in opaque+transparent:
         blend=blend_enabled and obj.get('blend',False)
         local=(obj['vertices']-position)@basis.T
-        view=np.column_stack((local[:,0],local[:,2],-local[:,1],obj['uv'],obj['colors']))
+        # Native -B0 view axis; -B2 and the negative projection Y cancel.
+        view=np.column_stack((-local[:,0],local[:,2],-local[:,1],obj['uv'],obj['colors']))
         cursor=0
         for slot,count in obj['groups']:
             tex=textures[slot]

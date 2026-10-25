@@ -35,7 +35,16 @@ lighting, fog and complete scene behavior remain unverified.
 
 Static camera analysis now links candidate registration to two named balcony
 zones and traces a conditional position update into the global camera matrix.
-The active menu camera selection and final orientation are not yet established.
+Target-based orientation construction and two named balcony targets are now traced.
+A menu behavior copies Camera02 into the global camera and sets a 1.3-radian
+angle. Runtime motion state and the final projection convention remain unverified.
+A [horizontal projection sign correction](docs/observations/2026-10-25-camera-projection-sign.md)
+removes mirrored diagnostic views; exact framing and original lighting remain unvalidated.
+
+The [missing courtyard objects investigation](docs/observations/2026-10-25-menu-missing-objects.md) adds the scaled liana and supported groups of three light fixtures to offline renders. Multi-stage fixture materials remain omitted; the 59.38-degree vertical FOV is provisional.
+
+Offline renders of both balcony candidates at two fields of view do not yet
+match the stationary menu framing; see the [comparison findings](docs/observations/2026-10-24-balcony-camera-renders.md).
 See the [camera vector and position findings](docs/observations/2026-10-24-camera-vector-transfer.md).
 
 The independent game runtime and native Linux/macOS validation remain future work.
@@ -57,7 +66,7 @@ and [local preview workflow](README-dev.md#menu-simulation).
 | Resources | Inspect MGM structure/materials, resolve menu links, preview DDS and MFT data | Selected formats and sample-specific interpretations |
 | Menu simulation | Ten screens, navigation, session profiles, settings and confirmations | No gameplay, persistent profiles or actual hardware configuration |
 | 3D research | Selected mesh/UV/material experiments and camera-linked field inspection | Offline diagnostics; original rendering and camera behavior unverified |
-| Native research | Ghidra static analysis, named camera-zone links and a conditional camera position path | Live camera selection and final orientation remain unverified |
+| Native research | Ghidra static analysis, named camera-zone links and a conditional camera position path | Camera02 menu pose-copy path and angle identified; runtime pose/projection unverified |
 | Validation | Synthetic tests and recorded comparisons against local game data | Results do not establish complete format or engine coverage |
 
 Detailed scope and evidence: [research status and validation](README-dev.md#research-status-and-validation).

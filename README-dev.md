@@ -536,3 +536,15 @@ Camera source pointer: [field +0x410 writers](docs/observations/2026-10-23-camer
 Balcony zone initialization: [pose references and remaining eligibility question](docs/observations/2026-10-24-balcony-zone-pose.md) verifies that both balcony zone instances reference themselves at field +0x18C. Native behavior 005ADE10 initializes derived vectors from that object in mode 2. The vector convention, writer of zone +0x88 and live camera selection remain unresolved.
 
 Camera vector transfer: [vector semantics and global position writes](docs/observations/2026-10-24-camera-vector-transfer.md) identifies the negative second basis axis, the translation-free transpose product, and a conditional position path through 005602E0 to the global camera matrix. The direct path recomputes the reference position; transfer of cached zone vectors and final orientation are not established.
+
+Menu camera orientation: [named targets, candidate poses and render readiness](docs/observations/2026-10-24-menu-camera-orientation.md) traces target-based direction and matrix construction. Two numerical balcony poses support an offline comparison; live selection, settled pose and FOV still need validation before claiming a faithful menu background.
+
+Balcony camera render comparison: [four diagnostic renders](docs/observations/2026-10-24-balcony-camera-renders.md) reuse 42 objects and 35 materials at vertical FOV 50/75 degrees. Neither candidate matches the stationary menu framing in these tests. Startup camera selection remains the priority; audio is deferred.
+
+Menu startup source: [Camera02 to global camera](docs/observations/2026-10-24-camera02-menu-startup.md) verifies that Menu_Start_Demo behavior 0059F140 copies Camera02 position, direction and up, then sets angle 1.3 radians. Two unadjusted renders remain diagnostic; view-axis/projection conventions and motion state need reconciliation.
+
+Projection correction: [horizontal view-axis sign](docs/observations/2026-10-25-camera-projection-sign.md) fixes mirrored output in both diagnostic rasterizers. Two projection regression tests and four native math tests pass. Earlier renders and manually fitted camera adjustments predate this correction and require reassessment.
+
+## Courtyard object completion (2026-10-25)
+
+The [missing courtyard objects investigation](docs/observations/2026-10-25-menu-missing-objects.md) adds the scaled liana and supported groups of three light fixtures to offline renders. Multi-stage fixture materials remain omitted; the 59.38-degree vertical FOV is provisional.
