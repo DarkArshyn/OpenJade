@@ -8,6 +8,7 @@ from resolve_camera_function_bodies import HASH
 from inspect_menu_scene_links import static_links
 from preview_menu3d_landmarks import mesh_groups
 from menu_colored_raster import raster
+from menu_fixture_materials import decode_fixture, SUPPORTED
 from menu_material_colors import color_state, apply_material_colors
 from menu_gpu_colors import direct_tree_colors
 from menu_primary_geometry import primary_mesh, instance_colors
@@ -73,16 +74,34 @@ def export(source,out, yaw=12.0, pitch=-1.0, fov=50.0, fog_time=0.0, tree_upload
     def material(key):
         if key in materials:return materials[key]
         d=payload(key)
-        if len(d)!=48 or struct.unpack_from('<2I',d)!=(5,6):raise ValueError('Unsupported leaf material '+key)
-        texkey=f'0x{struct.unpack_from("<I",d,44)[0]:08X}'
-        images=[]
-        for record in by.get(texkey,[]):
-            try: images.append(texture_image(raw[record['offset']+12:record['end']]))
-            except ValueError: pass
-        if len(images)!=1:raise ValueError('Missing or ambiguous pixel payload '+texkey)
-        image=images[0];slot=len(materials)
-        materials[key]=slot;textures[slot]=np.asarray(image);image.save(out/f'material-{slot}.png')
-        material_reports.append(dict(slot=slot,key=key,texture=texkey,color_state=color_state(d)))
+        stages=decode_fixture(d,key) if key in SUPPORTED else None
+        if stages is None and (len(d)!=48 or struct.unpack_from('<2I',d)!=(5,6)):
+            raise ValueError('Unsupported leaf material '+key)
+        def pixels(texkey):
+            images=[]
+            for record in by.get(texkey,[]):
+                try: images.append(texture_image(raw[record['offset']+12:record['end']]))
+                except ValueError:
+                    data=raw[record['offset']+12:record['end']]
+                    # This fixture's raw texture has extra lower-level data. Decode
+                    # only its bounded base level; do not infer the remaining layout.
+                    if texkey=='0x6600D792' and len(data)==43832 and struct.unpack_from('<3I',data,40)==(0,128,64) and struct.unpack_from('<HH',data,12)==(128,64):
+                        images.append(Image.frombytes('RGBA',(128,64),data[56:56+128*64*4],'raw','BGRA'))
+            if len(images)!=1:raise ValueError('Missing or ambiguous pixel payload '+texkey)
+            return images[0]
+        slot=len(materials)
+        texkey=stages[0]['texture'] if stages else f'0x{struct.unpack_from("<I",d,44)[0]:08X}'
+        image=pixels(texkey)
+        if stages:
+            descriptor=dict(stages=[],time=fog_time)
+            for i,state in enumerate(stages):
+                layer=pixels(state['texture']);layer.save(out/f'material-{slot}-stage-{i}.png')
+                descriptor['stages'].append(dict(state,image=np.asarray(layer,dtype=float)))
+            textures[slot]=descriptor
+        else:textures[slot]=np.asarray(image)
+        materials[key]=slot;image.save(out/f'material-{slot}.png')
+        material_reports.append(dict(slot=slot,key=key,texture=texkey,stages=stages,
+                                     color_state=color_state(d[:48])))
         return slot
     for key,rs in by.items():
         if len(rs)!=1:continue
@@ -108,14 +127,14 @@ def export(source,out, yaw=12.0, pitch=-1.0, fov=50.0, fog_time=0.0, tree_upload
                 else:
                     if slot>=len(pack):raise ValueError('Material slot out of range')
                     leaf=f'0x{pack[slot]:08X}'
-                if partial and len(payload(leaf)) != 48:
+                if partial and len(payload(leaf)) != 48 and leaf not in SUPPORTED:
                     omitted.append(dict(material=leaf,triangles=count,reason='Multi-stage material not implemented'))
                     group_start += count
                     continue
                 retained.append(tri[group_start:group_start+count])
                 group_start += count
                 mapped.append((material(leaf),count))
-                color_states.append(dict(material=leaf,triangles=count,**color_state(payload(leaf))))
+                color_states.append(dict(material=leaf,triangles=count,**color_state(payload(leaf)[:48])))
                 if leaf == "0x30000CAB":
                     state=fog_state(payload(leaf));state["motion"]=fog_uv_motion(payload(leaf));fog_states.append(state)
             if partial:
@@ -169,7 +188,7 @@ def export(source,out, yaw=12.0, pitch=-1.0, fov=50.0, fog_time=0.0, tree_upload
     image.save(out/'fixed-camera.png')
     report=dict(fog_time=fog_time,fog_time_basis="effective engine seconds, forward playback, chosen phase zero; not wall-clock replay",source_sha256=HASH,accepted=accepted,excluded=excluded,materials=material_reports,coverage_pixels=coverage,rasterized_triangles=drawn,
         camera=dict(key='0x30000CF0',vertical_fov=fov,yaw_adjustment=yaw,pitch_adjustment=pitch,adjustment_status='manual screenshot approximation',forward='-Y',position=f[3,:3].tolist()),
-        limitations=['Camera02 is a candidate, not confirmed main-menu framing','Common-space row transforms assumed; hierarchy unresolved; fourth matrix word in final row is opaque and unused','Constant-color mode 2 is applied per group; modes 0/3 retain diagnostic vertex colors rather than recovered lighting. Non-fog alpha threshold 128, repeat UV and nearest sampling remain diagnostic; fog uses base-level linear wrap-U/clamp-V; mip selection unresolved; dynamic U sampled analytically at effective engine time, initial phase fixed to zero','Three fog panels use native-verified source-over and no depth writes; object-center sorting remains diagnostic; fog RGB uses native material constant x2 and texture alpha','Raw format 0 interpreted as BGRA with exact mip-chain extent validation','Particles, unsupported layouts and animation excluded','OBJ V is inverted for interchange; native UV retained for raster'])
+        limitations=['Camera02 is a candidate, not confirmed main-menu framing','Common-space row transforms assumed; hierarchy unresolved; fourth matrix word in final row is opaque and unused','Constant-color mode 2 is applied per group; modes 0/3 retain diagnostic vertex colors rather than recovered lighting. Non-fog alpha threshold 128, repeat UV and nearest sampling remain diagnostic; fog uses base-level linear wrap-U/clamp-V; mip selection unresolved; dynamic U sampled analytically at effective engine time, initial phase fixed to zero','Three fog panels use native-verified source-over and no depth writes; object-center sorting remains diagnostic; fog RGB uses native material constant x2 and texture alpha','Raw format 0 interpreted as BGRA with exact mip-chain extent validation','Particles, unsupported layouts and animation excluded','Fixture two-pass RGB uses existing diagnostic vertex colors x2; animation phase is chosen, scene sorting remains diagnostic; OBJ/MTL exports show only the first texture stage','OBJ V is inverted for interchange; native UV retained for raster'])
     report['tree_upload_check']=tree_upload_check
     report['limitations'].append('Opt-in tronc4 experiment assumes the traced dynamic upload and loaded flags; cached buffer execution is not captured')
     (out/'scene.json').write_text(json.dumps(report,indent=2),encoding='utf8')

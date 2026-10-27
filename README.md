@@ -25,29 +25,11 @@ The Windows simulation displays ten screens in one window using extracted DDS
 interface assets and MFT fonts. Navigation, settings and profiles are simulated;
 profiles and settings are lost on exit. It does not execute the original game.
 
-Separate offline 3D experiments investigate selected courtyard objects,
-including the balcony, through diagnostic geometry and texture renders.
-Three textured fog panels now use native-verified scale and material-state findings.
-Targeted landmark fitting and a traced dynamic vertex-color upload path provide
-additional checks; they do not yet validate the complete scene.
-These experiments are not integrated into the menu; the original camera,
-lighting, fog and complete scene behavior remain unverified.
+A first native 3D viewer now displays selected decoded menu scenery with textures
+and a fixed camera. It remains a research preview; gameplay and native Linux/macOS
+validation are future work.
 
-Static camera analysis now links candidate registration to two named balcony
-zones and traces a conditional position update into the global camera matrix.
-Target-based orientation construction and two named balcony targets are now traced.
-A menu behavior copies Camera02 into the global camera and sets a 1.3-radian
-angle. Runtime motion state and the final projection convention remain unverified.
-A [horizontal projection sign correction](docs/observations/2026-10-25-camera-projection-sign.md)
-removes mirrored diagnostic views; exact framing and original lighting remain unvalidated.
-
-The [missing courtyard objects investigation](docs/observations/2026-10-25-menu-missing-objects.md) adds the scaled liana and supported groups of three light fixtures to offline renders. Multi-stage fixture materials remain omitted; the 59.38-degree vertical FOV is provisional.
-
-Offline renders of both balcony candidates at two fields of view do not yet
-match the stationary menu framing; see the [comparison findings](docs/observations/2026-10-24-balcony-camera-renders.md).
-See the [camera vector and position findings](docs/observations/2026-10-24-camera-vector-transfer.md).
-
-The independent game runtime and native Linux/macOS validation remain future work.
+#### Status : See [Camera02 activation follow-up (2026-10-25)](README-dev.md#camera02-activation-follow-up-2026-10-25)
 
 ## Prototype preview
 
@@ -65,7 +47,7 @@ and [local preview workflow](README-dev.md#menu-simulation).
 | Archives | Read and extract tested BF/BIG layouts; decode recognized POP-LZO envelopes | Not a universal archive decoder |
 | Resources | Inspect MGM structure/materials, resolve menu links, preview DDS and MFT data | Selected formats and sample-specific interpretations |
 | Menu simulation | Ten screens, navigation, session profiles, settings and confirmations | No gameplay, persistent profiles or actual hardware configuration |
-| 3D research | Selected mesh/UV/material experiments and camera-linked field inspection | Offline diagnostics; original rendering and camera behavior unverified |
+| 3D research | Decoded menu geometry displayed in a native viewer, with textures and a fixed camera | Partial scenery; fog, original lighting and full menu integration remain unfinished |
 | Native research | Ghidra static analysis, named camera-zone links and a conditional camera position path | Camera02 menu pose-copy path and angle identified; runtime pose/projection unverified |
 | Validation | Synthetic tests and recorded comparisons against local game data | Results do not establish complete format or engine coverage |
 
@@ -127,5 +109,3 @@ OpenJade is licensed under the GNU General Public License v3.0 or later
 
 > [!NOTE]
 > This is a hobby project, and no completion date is planned at this time. Any project contributions are welcome 😊
-
-

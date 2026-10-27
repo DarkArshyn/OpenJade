@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = ["crates/jade-assets", "crates/jade-render", "crates/jade-render-vulkan", "apps/jade-viewer"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace.dependencies]
+ash = { version = "=0.38.0", default-features = false, features = ["loaded", "std", "debug"] }
+jade-render = { path = "crates/jade-render" }
+jade-render-vulkan = { path = "crates/jade-render-vulkan" }
+
+ash-window = "=0.13.0"
+winit = "=0.30.12"
+raw-window-handle = "=0.6.2"
+
+jade-assets = { path = "crates/jade-assets" }

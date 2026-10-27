@@ -31,3 +31,14 @@ def projection_matrix(angle_radians,ratio,depth_a,depth_b,axis_flag=False):
     result[2,3]=1
     result[3,2]=float(np.float32(-.05))
     return result
+
+
+def projection_angles(angle_radians, width, height, context_flags=0, ratio_mode=2, custom_ratio=1.0):
+    """Expose 00660690 axis angles for explicit context inputs, not live state."""
+    if not all(math.isfinite(v) and v > 0 for v in (width,height)):
+        raise ValueError('Invalid viewport dimensions')
+    ratio=height/width if 1 <= ratio_mode <= 6 else custom_ratio
+    matrix=projection_matrix(angle_radians,ratio,1,1000,bool(context_flags & 4))
+    return dict(horizontal_degrees=math.degrees(2*math.atan(1/abs(matrix[0,0]))),
+                vertical_degrees=math.degrees(2*math.atan(1/abs(matrix[1,1]))),
+                ratio=ratio,axis='vertical' if context_flags & 4 else 'horizontal')

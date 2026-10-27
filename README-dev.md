@@ -1,6 +1,6 @@
 # OpenJade developer guide
 
-[Project overview](README.md) · Research snapshot: **2026-10-20**
+[Project overview](README.md)
 
 This guide describes the Windows research tools and experimental menu simulation.
 Dated observation records preserve earlier experiments; their limitations are not
@@ -30,12 +30,12 @@ These research dependencies do not establish Linux/macOS runtime support.
 | `references` | Reference provenance, without game assets |
 | `reports` | Local generated outputs; excluded from Git |
 | `game` | Local read-only game data; excluded from Git |
+| `engine` | Independent game runtime: rendering, scene management, input, animation, collision and gameplay systems |
 
 > [!NOTE]
 > The extracted game is located in the directory: `game\TSoT-GOG`
 
-Both `README.md` and `README-dev.md` live at the repository root. The future
-`engine/` directory will separate runtime development from research when it begins.
+Both `README.md` and `README-dev.md` live at the repository root.
 
 ## Research status and validation
 
@@ -80,11 +80,11 @@ not a general scan of every game format. Audio/video work remains deferred.
 | --- | --- | --- |
 | 1. BIG extraction | Extract a resource by numeric ID into a new directory; preserve stored bytes and record name, range, size and SHA-256 | Implemented; [42 checks](docs/observations/2026-10-09-big-extraction.md), including two real resources |
 | 2. Compression | Identify candidate compressed blocks and validate decompression separately, retaining traceability to stored bytes | Implemented for recognized POP envelopes; [differential validation](docs/observations/2026-10-13-lzo.md) on all 3,302 candidates |
-| 3. Menu textures and fonts | Decode the DDS/MFT data required by a selected screen and verify its interpretation | DDS preview verified; MFT atlas and raw metrics exported; font layout remains unverified |
+| 3. Menu textures and fonts | Decode the DDS/MFT data required by a selected screen and verify its interpretation | DDS decoding verified; MFT atlas and metrics decoded and used for experimental text rendering. Exact font layout and styling remain unverified. |
 | 4. One screen's behavior | Document layout, dimensions, colors, draw order and dependencies against observations of the original game | Partial: MGM evidence and seventeen 800x600 screenshots document layouts and visible states; some behavior remains assumed |
-| 5. First rendered screen | Display one reconstructed menu screen using the project's own rendering code and extracted game resources | Partial: ten simulated screens use MFT text and DDS assets; 3D background and pixel-exact fidelity remain absent |
+| 5. First rendered screen | Display one reconstructed menu screen using the project's own rendering code and extracted game resources | Partial: ten simulated screens use MFT text and DDS assets. A separate Rust/Vulkan viewer renders decoded 3D menu scenery with fog and multi-pass materials; integration with the menu interface and visual fidelity remain unfinished. |
 | 6. Interactive menu | Reproduce selection, input, navigation and transitions for that screen | Partial: single-window navigation, session profiles, eighteen action rows, sliders and confirmations; persistence, actual input bindings and transition timing remain unimplemented |
-| 7. Game systems | Investigate and implement required scene, object, animation, collision, audio and gameplay systems with tests | Runtime implementation not started; focused scene research is underway |
+| 7. Game systems | Investigate and implement required scene, object, animation, collision, audio and gameplay systems with tests | Early runtime prototype: Rust/Vulkan viewer renders decoded menu geometry with textures, depth testing, a fixed camera, fog and multi-pass materials. Camera animation is decoded and previewed in research tools; runtime animation, collision, audio and gameplay remain unimplemented. Lighting fidelity is not yet verified. |
 | 8. Native ports | Build and validate the independent implementation on Linux/macOS | Not started |
 
 No reliable overall completion percentage is available. Passing tool tests and
@@ -478,50 +478,25 @@ See [foundation decisions](docs/decisions/0001-foundation.md),
 [external research provenance](references), and the
 [license and legal disclaimer](README.md#license--legal-disclaimer).
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 Fixed-camera assembly: [textured menu scene diagnostic](docs/observations/2026-10-20-fixed-menu-scene.md). The new assembler exports 26 objects / 4,026 triangles as OBJ/MTL and an 800x600 preview. Unsupported resources are reported; original lighting, blending and exact camera framing remain unverified.
-
 
 Primary geometry and colors: [colored menu assembly](docs/observations/2026-10-20-colored-menu-scene.md) now renders 39 objects / 6,056 triangles, with stored RGB on 38 objects. A manual one-anchor camera adjustment approaches the supplied screenshot; full framing and native fog/lighting remain unresolved. Sixteen geometry candidates remain excluded.
 
-
 Missing objects and fog: [October 21 experiment](docs/observations/2026-10-21-menu-objects-fog.md) adds the detailed balcony and zero-UV ground, reaching 41 objects / 14,956 triangles. Two existing fog panels have an explicit experimental alpha-blending pass and a baseline comparison. Native fog blending and the third panel's transform remain unresolved.
-
 
 Native fog verification: [transform, blend and constant-color evidence](docs/observations/2026-10-21-native-fog-state.md) enables the third panel (42 objects / 14,960 triangles). The three panels now use verified source-over/no-depth-write flags and material constant color instead of black vertex RGB. Dynamic UV animation and full scene lighting remain unresolved.
 
-
 Fog UV motion: [native-derived time samples](docs/observations/2026-10-21-fog-uv-motion.md) add --fog-time in effective engine seconds. The shared material rate is decoded from its packed UV words; phase zero and forward time are explicit diagnostic choices. This remains an offline renderer, not a live animated menu.
-
 
 Material color dispatch: [per-group color investigation](docs/observations/2026-10-21-material-color-dispatch.md) corrects nine non-fog groups (200 triangles) using native constant-color mode 2. Modes 0 and 3 remain explicitly unresolved lighting approximations. The renderer exports a previous-colors.png comparison and per-group evidence in scene.json.
 
-
 Tree lighting and scene audit: [selected trunk and 42 stored transforms](docs/observations/2026-10-21-tree-lighting-scene-audit.md) identifies the direct instance-color branch for Menu3D_tronc4, which clears the subsequent dynamic-light enable bit for the examined state. A numbered object image and transform report make placement checks reproducible. Native color upload, runtime transforms and exact screenshot framing remain unverified; no global brightness or object-position correction is applied.
-
 
 Camera constraints and GPU upload: [landmark fitting and dynamic vertex transfer](docs/observations/2026-10-21-camera-fit-gpu-upload.md) adds a reproducible three-landmark balcony fit, with two ambiguous foreground candidates explicitly excluded. The dynamic color packing/copy path is traced to Direct3D submission. An opt-in --tree-upload-check preview applies the bounded tronc4 case; default camera and general lighting remain unchanged. Cached-buffer execution and whole-scene alignment remain unverified.
 
-
 External geometry cross-check: [PoP BF Lab comparison, October 22](docs/observations/2026-10-22-pop-bf-lab-geometry-comparison.md) matches all 42 assembled objects against the supplied Jade Z-up OBJ. Triangle counts and ordered corner coordinates agree within 0.000001 scene unit, including the third fog panel. This supports stored geometry; native camera, runtime transforms, UV/material parity and lighting remain separate questions.
 
-
 Native camera matrices: [October 22 static trace](docs/observations/2026-10-22-native-camera-matrices.md) identifies the camera-block rigid inverse, axis-conversion routine and PC projection coefficients, including radian half-angle tangent, aspect branch, vertical sign and fixed depth term. Four synthetic tests cover the independent math module. Active-menu field writers and complete matrix composition remain unresolved; default rendering is unchanged.
-
 
 Active camera writers: [October 23 static trace](docs/observations/2026-10-23-active-camera-writers.md) identifies the attached-object transform callback, the explicit FOV setter and the per-render copy into the camera block. Instruction checks confirm the full matrix copy and angle writes. The menu's selected object and final runtime values remain unverified; renderer defaults are unchanged.
 
@@ -545,6 +520,22 @@ Menu startup source: [Camera02 to global camera](docs/observations/2026-10-24-ca
 
 Projection correction: [horizontal view-axis sign](docs/observations/2026-10-25-camera-projection-sign.md) fixes mirrored output in both diagnostic rasterizers. Two projection regression tests and four native math tests pass. Earlier renders and manually fitted camera adjustments predate this correction and require reassessment.
 
-## Courtyard object completion (2026-10-25)
+Courtyard object completion: The [missing courtyard objects investigation](docs/observations/2026-10-25-menu-missing-objects.md) adds the scaled liana and supported groups of three light fixtures to offline renders. The [two-pass fixture materials](docs/observations/2026-10-25-fixture-materials.md) now restore every group of the three fixtures in the diagnostic raster. Original lighting and mip selection remain unverified; the 59.38-degree vertical FOV is provisional.
 
-The [missing courtyard objects investigation](docs/observations/2026-10-25-menu-missing-objects.md) adds the scaled liana and supported groups of three light fixtures to offline renders. Multi-stage fixture materials remain omitted; the 59.38-degree vertical FOV is provisional.
+Projection initialization: The [projection initialization trace](docs/observations/2026-10-25-projection-initialization.md) supports the provisional 59.38-degree vertical FOV at 800x600: the context defaults select a horizontal angle. Runtime overrides and Camera02 motion state remain unverified.
+
+[Native Camera02 track decoding](docs/observations/2026-10-25-camera02-tracks.md) now resolves four rotation keys and 32 vector keys, each track lasting nine seconds. Runtime activation, third-track events and world-space composition remain unverified; no animated pose is applied to the still menu.
+
+[Camera02 activation and relative composition](docs/observations/2026-10-25-camera02-activation-composition.md): a conditional menu event starts the controller at time zero. Native matrix composition places the final translation within 0.000010 scene unit of the stored Balcony camera. The exact UI trigger and animated orientation still require validation; the third track is decoded in the follow-up below.
+
+[Camera02 event-track follow-up](docs/observations/2026-10-26-camera02-events.md): the third track contains identical FOV instruction blocks at 0 and 9 seconds (approximately 1.3 radians), rather than another transform curve. Message 999 is constructed as an interface action; its exact visible element and invocation remain to be resolved.
+
+[Camera02 transition preview](docs/observations/2026-10-26-camera02-transition-preview.md) samples the nine-second relative position and quaternion orientation in a local HTML frame viewer. The final pose closely matches stored Balcony position and basis. Action 999 resolves to resource pair 0B0041D2:3; the binary association with its visible label remains unconfirmed. Lighting and scene animation remain diagnostic.
+
+## Native engine bootstrap
+
+The [engine workspace](engine/README.md) targets Rust + ash + Vulkan. It now provides a Vulkan presentation window and CLI adapter probe, **not a rendered menu**. Rust 1.99.1, Cargo 1.99.1 and MSVC C++ tools are installed and verified. The compiled probe ran successfully with VK_LAYER_KHRONOS_validation enabled and detected the AMD Radeon RX 9070 XT (Vulkan 1.4.349). Cargo.lock records the resolved dependencies. Window presentation, a diagnostic textured square and an optional decoded menu-scene import with depth testing are implemented.
+
+The separate Vulkan SDK probe successfully detected the AMD GPU and the Khronos validation layer. The window smoke test presented 80 frames, resized 800x600 -> 1024x720 -> 800x600 and exited with zero validation errors; Clippy passed with warnings denied. The textured-panel smoke test also passed with 80 frames, both resizes and zero validation errors. The panel samples an uploaded original 128x128 checkerboard with four colored UV corners; it retains square proportions on resize. GLSL shaders are compiled by glslc during the Cargo build. Next milestones are depth/axis checks and the imported Camera02 scene. See [engine/README.md](engine/README.md) for launch commands.
+
+The [local scene interchange](docs/formats/engine-scene-interchange.md) documents the bounded package and rendering assumptions. `src/export_engine_scene.py` bridges existing research exports to `jade-assets`; original data stays in ignored reports. No technical setup details are added to the visitor-facing README.

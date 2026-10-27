@@ -1,0 +1,5 @@
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
+# Verified on Windows with the Vulkan adapter probe.
