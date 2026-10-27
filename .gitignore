@@ -1,9 +1,17 @@
+
+# =============================================================================
+# OpenJade - Original game data and research
+# =============================================================================
+
 # Original game data, historical copies and generated reports are private.
 /game/
 /OLD-Archive/
 /reports/*
 !/reports/README.md
-/src/__pycache__
+
+# Python cache
+/src/__pycache__/
+
 # Do not publish extracted assets from any working directory.
 *.bf
 *.dat
@@ -13,7 +21,29 @@
 *.big
 *.fat
 *.bik
+
+# =============================================================================
+# OpenJade Engine - Rust / Cargo
+# =============================================================================
+
+# Cargo build artifacts (debug, release, incremental builds)
+/engine/target/
+
+# Rust temporary backup files
+*.rs.bk
+
+# Engine-generated local data
+/engine/cache/
+/engine/logs/
+/engine/tmp/
+
+# =============================================================================
+# Generated binaries and temporary files
+# =============================================================================
+
 *.exe
 *.dll
+*.pdb
+*.ilk
 *.bak
 *.log
