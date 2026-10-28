@@ -50,3 +50,6 @@
 *.log
 # Local research scene packages contain extracted assets.
 *.ojscene
+
+# Local UI bundles include extracted interface assets.
+*.ojui

@@ -60,6 +60,7 @@ pub struct Presenter {
     dirty: bool,
     panel: Option<Panel>,
     scene: Option<Scene>,
+    menu_frame: Option<([f32; 20], Option<u32>)>,
 }
 
 impl Presenter {
@@ -119,6 +120,7 @@ impl Presenter {
                 dirty: true,
                 panel: None,
                 scene,
+                menu_frame: None,
             };
             if validation {
                 this.messenger = this.debug_loader.create_debug_utils_messenger(
@@ -212,6 +214,17 @@ impl Presenter {
             );
             Ok(this)
         }
+    }
+    pub fn menu_frame(&mut self, camera: [f32; 13], vertex: Option<u32>) {
+        let mut constants = [0.; 20];
+        for i in 0..4 {
+            constants[i * 4..i * 4 + 3].copy_from_slice(&camera[i * 3..i * 3 + 3]);
+        }
+        constants[16] = 1. / (camera[12].to_radians() * 0.5).tan();
+        constants[17] = 4. / 3.;
+        constants[18] = 0.1;
+        constants[19] = 1000.;
+        self.menu_frame = Some((constants, vertex));
     }
     pub fn resize(&mut self) {
         self.dirty = true;
@@ -348,7 +361,7 @@ impl Presenter {
             self.panel
                 .as_ref()
                 .unwrap()
-                .draw(self.command, index as usize);
+                .draw(self.command, index as usize, self.menu_frame);
             d.end_command_buffer(self.command)?;
             let wait = [self.acquired];
             let stage = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];

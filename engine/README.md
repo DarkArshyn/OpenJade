@@ -43,7 +43,23 @@ with that toolchain location.
 `Cargo.lock` is generated and should be committed for this application workspace.
 The toolchain is pinned to the tested Rust 1.99.1 release.
 
-## Decoded menu geometry
+## Integrated main menu and Camera02
+
+See [current workflow and controls](../README-dev.md#native-menu-prototype).
+
+```powershell
+cargo run -p jade-viewer -- --scene ../reports/engine-materials-20261027/menu.ojscene --menu ../reports/engine-ui-20261028/menu.ojui --validation
+```
+
+The UI and 3D scene share one render pass/window. UI is alpha blended after the
+scene with depth disabled. Main-menu navigation, Options landing page and quit
+confirmation are native. Detailed options/profiles remain in the Python simulation.
+Start New Game plays a baked 60 Hz, nine-second Camera02 trajectory and holds the
+balcony pose. Escape resets it. No gameplay follows. Letterboxing preserves 4:3
+rendering and mouse coordinates. The smoke mode accelerates time to exercise the
+transition plus return in 80 frames; ordinary playback uses elapsed real time.
+
+## Decoded menu geometry (initial import, 2026-10-27)
 
 The local import tested on 2026-10-27 contains **40 objects / 14,994 triangles / 31
 texture layers**, taken from the existing research export. Camera02 uses its initial
@@ -72,10 +88,12 @@ Without `--scene`, the original diagnostic panel remains available. Scene data i
 never automatically loaded from the game installation. The package, manifest and
 capture live under ignored `reports/`; `*.ojscene` is also ignored globally.
 
-Current limits: three fog panels and three multi-stage fixture objects are excluded;
+The initial version-1 import excluded three fog panels and three fixture objects.
+The newer `export_engine_materials.py` / OJSCN002 import includes all six, with
+source-over fog and two-pass fixtures; its `--time` selects a fixed material phase.
+Remaining limits:
 textures use nearest sampling and 512x512 array layers without mipmaps. Colors are
-those of the research export, not verified native lighting. There is no UI overlay,
-animated camera or gameplay. The near/far planes (0.1/1000) are chosen research values.
+those of the research export, not verified native lighting. UI and camera playback are enabled with `--menu`; gameplay remains absent. The near/far planes (0.1/1000) are chosen research values.
 See [interchange specification](../docs/formats/engine-scene-interchange.md).
 
 ## Boundaries and milestones
@@ -95,7 +113,7 @@ See [interchange specification](../docs/formats/engine-scene-interchange.md).
   presented frames. Vulkan errors make the smoke process return failure.
   Game-derived resources are loaded only from an explicit local `--scene` package.
 
-Next: material fidelity, transparent fog, Camera02 transition controls and menu integration.
+Next: faithful lighting/materials, detailed native UI controls and general animation systems.
 Create `assets/scene/game-specific` crates when their first implemented behavior
 is introduced. Keep the existing research tools in the repository root.
 

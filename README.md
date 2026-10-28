@@ -8,10 +8,9 @@
 
 OpenJade is an independent research project aimed at reimplementing
 *Prince of Persia: The Sands of Time* and the necessary Jade Engine functionality
-from scratch, without Ubisoft's source code. The reference game is the **PC GOG edition**.
-
+from scratch, without Ubisoft's source code. The reference is the **PC GOG edition**.
 Native Windows, Linux and macOS support is a long-term objective.
-Game data must come from your own local installation and is not included here.
+Game resources must come from your own local installation and are not distributed here.
 
 > [!NOTE]
 > Generative AI assists with research and implementation under human supervision.
@@ -19,79 +18,73 @@ Game data must come from your own local installation and is not included here.
 
 ## Current status
 
-**Research tools and an experimental menu simulation are available; the game is not playable in OpenJade.**
+**An early native menu prototype runs on Windows. The game is not playable.**
 
-The Windows simulation displays ten screens in one window using extracted DDS
-interface assets and MFT fonts. Navigation, settings and profiles are simulated;
-profiles and settings are lost on exit. It does not execute the original game.
+The Rust/Vulkan viewer combines decoded 3D menu scenery with an interactive main
+menu. Selecting Start New Game hides the interface and plays a nine-second
+Camera02 transition toward the balcony, where the camera stops. Escape returns
+to the main menu. There is no controllable Prince, cutscene playback or level loading.
 
-A first native 3D viewer now displays selected decoded menu scenery with textures
-and a fixed camera. It remains a research preview; gameplay and native Linux/macOS
-validation are future work.
+The scenery includes 46 decoded objects, textures, depth testing, three fog panels
+and multi-pass light-fixture materials. Lighting, transparency ordering and visual
+fidelity remain under investigation; this is not a faithful recreation yet.
 
-#### Status : See [Camera02 activation follow-up (2026-10-25)](README-dev.md#camera02-activation-follow-up-2026-10-25)
+The separate Python simulation remains more complete for interface research:
+it provides ten screens, detailed settings, bindings and session profiles.
+Those detailed controls have **not** all been ported to the native viewer.
 
 ## Prototype preview
 
-The prototype currently provides an **800x600 menu simulation** with a neutral
-background, screenshot-based layouts, controls, sliders and confirmation screens.
-It is not a pixel-identical reproduction and no screenshot gallery is bundled yet.
+The native prototype displays the main menu and its 3D background in one window,
+with mouse/keyboard navigation, an Options landing page and quit confirmation.
+Unimplemented settings, profiles and original credits display explicit notices.
+The menu uses locally prepared MFT text and DDS interface resources.
 
-See the [simulation description and limitations](docs/observations/2026-10-16-complete-menu-simulation.md)
-and [local preview workflow](README-dev.md#menu-simulation).
+Captures and generated asset bundles remain local and are not included in the
+repository. See the [native prototype workflow](README-dev.md#native-menu-prototype)
+and the [separate Python simulation](README-dev.md#menu-simulation).
 
 ## Implemented capabilities
 
 | Area | Available today | Main limit |
 | --- | --- | --- |
-| Archives | Read and extract tested BF/BIG layouts; decode recognized POP-LZO envelopes | Not a universal archive decoder |
-| Resources | Inspect MGM structure/materials, resolve menu links, preview DDS and MFT data | Selected formats and sample-specific interpretations |
-| Menu simulation | Ten screens, navigation, session profiles, settings and confirmations | No gameplay, persistent profiles or actual hardware configuration |
-| 3D research | Decoded menu geometry displayed in a native viewer, with textures and a fixed camera | Partial scenery; fog, original lighting and full menu integration remain unfinished |
-| Native research | Ghidra static analysis, named camera-zone links and a conditional camera position path | Camera02 menu pose-copy path and angle identified; runtime pose/projection unverified |
-| Validation | Synthetic tests and recorded comparisons against local game data | Results do not establish complete format or engine coverage |
-
-Detailed scope and evidence: [research status and validation](README-dev.md#research-status-and-validation).
+| Archives | Tested BF/BIG extraction and recognized POP-LZO decoding | Not a universal archive decoder |
+| Resources | MGM structure/materials, menu links, DDS and MFT previews | Selected layouts; font styling remains experimental |
+| Python menu simulation | Ten screens, settings, session profiles and confirmations | No gameplay or persistent settings |
+| Native menu | 3D scenery and main-menu UI in one Vulkan window; mouse/keyboard navigation | Detailed option controls and profiles not yet ported |
+| Camera02 | Nine-second transition sampled from decoded tracks and played by the native viewer | Baked 60 Hz poses; no original scripting runtime or gameplay trigger chain |
+| Scene materials | Textures, depth, fog and multi-pass fixture blending | Original lighting, particles and exact filtering remain unresolved |
+| Validation | Synthetic tests, Vulkan validation and local visual checks | Windows/AMD tested; no Linux/macOS validation |
 
 ## Roadmap
 
-1. Verify the menu background's geometry, materials and camera behavior.
-2. Improve menu fidelity, confirm defaults and add OpenJade-owned persistent profiles.
-3. Establish a minimal independent scene runtime, then investigate animation,
-   collision, audio and gameplay incrementally.
-4. Implement and validate the first independent runtime on Windows.
-5. Port and validate the runtime on Linux and macOS.
+1. Improve scene fidelity: lighting, fog, filtering and transparency ordering.
+2. Port detailed interactive menu controls and add OpenJade-owned persistence.
+3. Extend animation and scene/object systems beyond the baked camera transition.
+4. Investigate collision, player control, cutscenes, audio and gameplay incrementally.
+5. Build and validate Linux/macOS ports.
 
 There is no completion date or reliable overall completion percentage.
 See [milestones and validation criteria](README-dev.md#roadmap-and-milestones).
 
 ## Getting started
 
-Use Windows, Windows PowerShell 5.1, and Python with Pillow, NumPy and tkinter.
-C# helpers support resource decoding. Ghidra with a compatible JDK is also used
-for optional static analysis of the game executable; it is not required to run
-the menu simulation. See the [native analysis setup](docs/decisions/native-analysis-setup.md).
+Development currently uses Windows. The native viewer requires the Rust/Vulkan
+build environment and locally generated scene/menu bundles; research tools use
+PowerShell and Python. Ghidra supports optional static analysis and is not required
+to launch a prepared preview.
 
-You need your own [PC GOG game](https://www.gog.com/game/prince_of_persia_the_sands_of_time) data and a generated prototype report.
-For a fresh checkout, follow the [local setup and asset preparation](README-dev.md#getting-started).
-
-With an existing report containing `experiment.json` and `menus-assets/catalog.json`,
-run from the repository root in Windows PowerShell:
-
-```powershell
-$pythonPath = (Get-Command python -ErrorAction Stop).Source
-$reportDirectory = Read-Host 'Path to the generated menu prototype report'
-.\tools\Show-MenuSimulation.ps1 -ReportDirectory $reportDirectory -PythonPath $pythonPath
-```
-
-Create a session profile, then navigate with the mouse or Tab/arrow keys and Enter.
-Escape goes back. The original game's profiles and settings are not modified.
+Start with the [developer setup guide](README-dev.md#getting-started), then choose
+the [native menu prototype](README-dev.md#native-menu-prototype) or the
+[Python menu simulation](README-dev.md#menu-simulation). A fresh checkout contains
+neither original game resources nor generated bundles.
 
 ## Documentation
 
 - [Developer guide](README-dev.md): setup, commands, tests, milestones and architecture.
-- [Format notes](docs/formats): supported layouts and limitations.
-- [Research observations](docs/observations): dated experiments and evidence.
+- [Engine guide](engine/README.md): native viewer build and launch.
+- [Format notes](docs/formats): observed layouts and local interchange formats.
+- [Research observations](docs/observations): dated evidence and experiments.
 - [Project decisions](docs/decisions) and [external research provenance](references).
 
 ## License & Legal Disclaimer

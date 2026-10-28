@@ -294,3 +294,5 @@ mod material_tests {
         assert!(Scene::decode(&b).is_err());
     }
 }
+
+pub mod ui;

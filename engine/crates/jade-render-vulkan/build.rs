@@ -10,7 +10,13 @@ fn main() {
             })
         })
         .unwrap_or_else(|| "glslc".into());
-    for name in ["panel.vert", "panel.frag", "scene.vert", "scene.frag"] {
+    for name in [
+        "panel.vert",
+        "panel.frag",
+        "scene.vert",
+        "scene.frag",
+        "ui.vert",
+    ] {
         let source = PathBuf::from("shaders").join(name);
         println!("cargo:rerun-if-changed={}", source.display());
         let output = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join(format!("{name}.spv"));

@@ -19,6 +19,7 @@ pub(super) struct Panel {
     set: vk::DescriptorSet,
     layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
+    ui_pipeline: vk::Pipeline,
     blended: Vec<vk::Pipeline>,
     extra_samplers: Vec<vk::Sampler>,
     draws: Vec<Draw>,
@@ -63,6 +64,7 @@ impl Panel {
             set: vk::DescriptorSet::null(),
             layout: vk::PipelineLayout::null(),
             pipeline: vk::Pipeline::null(),
+            ui_pipeline: vk::Pipeline::null(),
             blended: vec![],
             extra_samplers: vec![],
             draws: scene.map_or_else(Vec::new, |s| s.draws.clone()),
@@ -608,9 +610,50 @@ impl Panel {
                 }
             }
         }
+        if scene.is_some() {
+            let code = ash::util::read_spv(&mut Cursor::new(
+                include_bytes!(concat!(env!("OUT_DIR"), "/ui.vert.spv")).as_slice(),
+            ))
+            .map_err(|_| vk::Result::ERROR_INITIALIZATION_FAILED)?;
+            let shader =
+                d.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(&code), None)?;
+            p.shaders.push(shader);
+            let stages = [stages[0].module(shader), stages[1]];
+            let attachment = [vk::PipelineColorBlendAttachmentState::default()
+                .blend_enable(true)
+                .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
+                .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+                .color_blend_op(vk::BlendOp::ADD)
+                .src_alpha_blend_factor(vk::BlendFactor::ONE)
+                .dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+                .alpha_blend_op(vk::BlendOp::ADD)
+                .color_write_mask(vk::ColorComponentFlags::RGBA)];
+            let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&attachment);
+            let depth = depth_state
+                .depth_test_enable(false)
+                .depth_write_enable(false);
+            let info = pipeline
+                .stages(&stages)
+                .color_blend_state(&blend)
+                .depth_stencil_state(&depth);
+            match d.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None) {
+                Ok(v) => p.ui_pipeline = v[0],
+                Err((partial, e)) => {
+                    for h in partial {
+                        d.destroy_pipeline(h, None);
+                    }
+                    return Err(e);
+                }
+            }
+        }
         Ok(p)
     }
-    pub(super) unsafe fn draw(&self, command: vk::CommandBuffer, index: usize) {
+    pub(super) unsafe fn draw(
+        &self,
+        command: vk::CommandBuffer,
+        index: usize,
+        menu_frame: Option<([f32; 20], Option<u32>)>,
+    ) {
         let d = &self.device;
         let rect = vk::Rect2D::default().extent(self.extent);
         let clear = [
@@ -648,7 +691,7 @@ impl Panel {
                 max_depth: 1.0,
             }],
         );
-        if let Some(camera) = self.camera {
+        if let Some(camera) = menu_frame.map(|f| f.0).or(self.camera) {
             d.cmd_set_viewport(
                 command,
                 0,
@@ -670,6 +713,22 @@ impl Panel {
                 &bytes,
             );
             d.cmd_bind_vertex_buffers(command, 0, &[self.vertex_buffer], &[0]);
+        }
+        if menu_frame.is_some() {
+            let [x, y, width, height] =
+                jade_assets::ui::viewport(self.extent.width, self.extent.height);
+            d.cmd_set_viewport(
+                command,
+                0,
+                &[vk::Viewport {
+                    x,
+                    y,
+                    width,
+                    height,
+                    min_depth: 0.,
+                    max_depth: 1.,
+                }],
+            );
         }
         d.cmd_set_scissor(command, 0, &[rect]);
         d.cmd_bind_pipeline(command, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
@@ -706,6 +765,19 @@ impl Panel {
         } else {
             d.cmd_draw(command, self.vertex_count, 1, 0, 0);
         }
+        if let Some((_, Some(first))) = menu_frame {
+            let parameters = [1f32, 1., 0., 0., 1., 1., 0., 0.];
+            let bytes: Vec<u8> = parameters.iter().flat_map(|v| v.to_ne_bytes()).collect();
+            d.cmd_bind_pipeline(command, vk::PipelineBindPoint::GRAPHICS, self.ui_pipeline);
+            d.cmd_push_constants(
+                command,
+                self.layout,
+                vk::ShaderStageFlags::FRAGMENT,
+                80,
+                &bytes,
+            );
+            d.cmd_draw(command, 24, 1, first, 0);
+        }
         d.cmd_end_render_pass(command);
     }
 }
@@ -717,6 +789,7 @@ impl Drop for Panel {
             for pipeline in self.blended.drain(..) {
                 d.destroy_pipeline(pipeline, None);
             }
+            d.destroy_pipeline(self.ui_pipeline, None);
             d.destroy_pipeline(self.pipeline, None);
             d.destroy_pipeline_layout(self.layout, None);
             for shader in self.shaders.drain(..) {
