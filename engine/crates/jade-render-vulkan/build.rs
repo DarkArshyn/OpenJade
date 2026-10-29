@@ -16,6 +16,8 @@ fn main() {
         "scene.vert",
         "scene.frag",
         "ui.vert",
+        "gamma.vert",
+        "gamma.frag",
     ] {
         let source = PathBuf::from("shaders").join(name);
         println!("cargo:rerun-if-changed={}", source.display());

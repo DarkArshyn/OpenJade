@@ -26,19 +26,30 @@ Camera02 transition toward the balcony, where the camera stops. Escape returns
 to the main menu. There is no controllable Prince, cutscene playback or level loading.
 
 The scenery includes 46 decoded objects, textures, depth testing, three fog panels
-and multi-pass light-fixture materials. Lighting, transparency ordering and visual
+and multi-pass light-fixture materials. Scene textures retain their decoded dimensions;
+filtering and generated mipmaps can be compared in the viewer. Lighting, transparency ordering and visual
 fidelity remain under investigation; this is not a faithful recreation yet.
+The current scene still omits the sky, moon and some small effects. Named scene
+lights are not yet reproduced as runtime lights; recorded vertex colors provide
+part of the current appearance.
 
-The separate Python simulation remains more complete for interface research:
-it provides ten screens, detailed settings, bindings and session profiles.
-Those detailed controls have **not** all been ported to the native viewer.
+The detailed menu screens now run in the native viewer alongside the 3D scenery.
+Gamma, texture filtering, window resolution and V-Sync can be changed there,
+with changes applied only after Back and confirmation, plus OpenJade-owned persistence.
+Profile selection and keyboard-binding editing are available; they do not load
+original saves or control a playable character. Audio/gameplay and unsupported
+graphics options are visibly disabled. Python is used for offline preparation
+and research, not required alongside a prepared native menu.
 
 ## Prototype preview
 
 The native prototype displays the main menu and its 3D background in one window,
-with mouse/keyboard navigation, an Options landing page and quit confirmation.
-Unimplemented settings, profiles and original credits display explicit notices.
-The menu uses locally prepared MFT text and DDS interface resources.
+with mouse/keyboard navigation, profile creation/selection, Controls, Game,
+Graphics Effects/Advanced, Sound and confirmation screens. Original credits
+remain an explicit notice and Load Game is unavailable. Text and widgets are
+composed in Rust using locally prepared MFT/DDS resources. The logo and cursor
+retain their original image dimensions, and text selects among twelve bitmap
+font variants as the window grows; the interface uses linear filtering.
 
 Captures and generated asset bundles remain local and are not included in the
 repository. See the [native prototype workflow](README-dev.md#native-menu-prototype)
@@ -50,8 +61,8 @@ and the [separate Python simulation](README-dev.md#menu-simulation).
 | --- | --- | --- |
 | Archives | Tested BF/BIG extraction and recognized POP-LZO decoding | Not a universal archive decoder |
 | Resources | MGM structure/materials, menu links, DDS and MFT previews | Selected layouts; font styling remains experimental |
-| Python menu simulation | Ten screens, settings, session profiles and confirmations | No gameplay or persistent settings |
-| Native menu | 3D scenery and main-menu UI in one Vulkan window; mouse/keyboard navigation | Detailed option controls and profiles not yet ported |
+| Python menu simulation | Retained as a research/reference tool | No gameplay; optional legacy gamma bridge |
+| Native menu | Detailed screens over 3D scenery, four confirmed display controls, local profiles/settings and confirmations | Unsupported systems disabled; bindings stored but no gameplay |
 | Camera02 | Nine-second transition sampled from decoded tracks and played by the native viewer | Baked 60 Hz poses; no original scripting runtime or gameplay trigger chain |
 | Scene materials | Textures, depth, fog and multi-pass fixture blending | Original lighting, particles and exact filtering remain unresolved |
 | Validation | Synthetic tests, Vulkan validation and local visual checks | Windows/AMD tested; no Linux/macOS validation |
@@ -59,7 +70,7 @@ and the [separate Python simulation](README-dev.md#menu-simulation).
 ## Roadmap
 
 1. Improve scene fidelity: lighting, fog, filtering and transparency ordering.
-2. Port detailed interactive menu controls and add OpenJade-owned persistence.
+2. Connect remaining menu settings to implemented game systems and refine interface fidelity.
 3. Extend animation and scene/object systems beyond the baked camera transition.
 4. Investigate collision, player control, cutscenes, audio and gameplay incrementally.
 5. Build and validate Linux/macOS ports.

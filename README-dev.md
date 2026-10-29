@@ -2,9 +2,17 @@
 
 [Project overview](README.md)
 
-Current implementation status: **2026-10-28**. Distinguish the native Rust/Vulkan
-prototype from the more extensive Python interface simulation and historical
-reverse-engineering experiments. Original game inputs remain read-only.
+Current implementation status: **2026-10-29**. Original game inputs remain read-only.
+
+Latest completed work: original logo/cursor pixel dimensions, linear UI filtering
+and resolution-aware selection among twelve MFT variants. Detailed menus are composed and controlled directly in
+Rust/Vulkan, with gamma, filtering, window resolution, V-Sync and local profile/
+settings persistence. A prepared native menu no longer needs a running Python
+controller. Unsupported audio, gameplay and graphics controls are disabled;
+keyboard bindings are stored but do not drive gameplay. Original visual fidelity
+remains unverified. See [native menus](#native-menu-prototype),
+[implementation evidence](docs/observations/2026-10-28-native-menus.md) and
+[validation](#testing-and-evidence).
 
 ## Development environment
 
@@ -43,9 +51,9 @@ is `game/TSoT-GOG`; no path is a bundled dependency or permission to redistribut
 | 2. Compression | Trace stored blocks and validate decompression | Recognized POP envelopes; [3,302 resources differentially validated](docs/observations/2026-10-13-lzo.md) |
 | 3. Menu textures and fonts | Decode required DDS/MFT resources and verify interpretation | DDS checked; MFT atlas/metrics used for experimental text. Exact layout/style remains unverified |
 | 4. Screen behavior | Document layout, colors, order and dependencies against original observations | Partial: MGM evidence and seventeen 800x600 screenshots; some behavior remains reconstructed |
-| 5. First rendered screen | Render reconstructed UI and original resources with independent code | Native main-menu UI now overlays decoded 3D scenery in one Vulkan window. Pixel fidelity is unfinished |
-| 6. Interactive menu | Reproduce selection, input, navigation and transitions | Native mouse/keyboard main menu, Options navigation, quit confirmation and Camera02 transition. Detailed settings/profiles remain Python-only; persistence and real device bindings are absent |
-| 7. Game systems | Implement scene/object/animation/collision/audio/gameplay with tests | Early rendering runtime: depth, textures, fog and fixture passes; baked 60 Hz Camera02 playback. General animation, collision, audio, actors and gameplay are unimplemented. Native lighting fidelity is unresolved |
+| 5. First rendered screen | Render reconstructed UI and original resources with independent code | Native detailed menu UI overlays 46 decoded 3D objects. Native scene texture dimensions, filtering/mipmap and color-pipeline comparisons, plus post-composition gamma are implemented. Lighting/fog fidelity and high-resolution UI remain unfinished |
+| 6. Interactive menu | Reproduce selection, input, navigation and transitions | Native detailed screens, profile creation/selection/deletion, keyboard-binding capture, settings/quit confirmations and Camera02 playback. Gamma, filtering, window resolution and V-Sync affect the viewer; committed preferences/profiles persist in an OpenJade file. Unsupported systems remain disabled; binding storage is not gameplay input |
+| 7. Game systems | Implement scene/object/animation/collision/audio/gameplay with tests | Early rendering runtime: depth, textures, fog/fixture passes, explicit color paths and post-composition gamma; baked 60 Hz Camera02 playback. General animation, collision, audio, actors and gameplay are unimplemented. Native lighting fidelity is unresolved |
 | 8. Native ports | Build and validate Linux/macOS | Not started |
 
 No reliable overall completion percentage is available. Test counts and resource
@@ -57,7 +65,7 @@ Choose a workflow:
 
 1. For the native preview, install the [engine prerequisites](engine/README.md),
    prepare the local bundles below, then run from `engine/`.
-2. For detailed interface experiments, follow [Python menu simulation](#menu-simulation).
+2. For historical/reference interface experiments, use [Python menu simulation](#menu-simulation).
 3. For archive/resource work, use the format-specific commands later in this guide.
 
 A fresh checkout does not contain generated reports, textures, game binaries or
@@ -66,32 +74,71 @@ reports; they are not archive extraction commands.
 
 ## Native menu prototype
 
-The native UI includes the main menu, Options landing page, an OpenJade credits
-notice, quit confirmation and an explicit unavailable-feature notice. Load Game
-is disabled. Detailed options/profiles are not secretly implemented by Python at
-runtime: Python only prepares textures and camera samples ahead of time.
+The native UI includes profile creation/selection, main menu, Options, Keyboard,
+Gamepad, Game, Graphics Effects/Advanced, Sound and a credits notice. Confirmations
+are drawn in the same window. Load Game remains disabled. Original credits,
+gamepad capture, audio and gameplay are not implemented.
+
+The current `OJUI0003` bundle supplies 1,151 glyph/sprite entries in six images,
+plus Camera02 samples. Rust builds the text/widget geometry each frame; it does
+not call Python. The old `OJUI0001` baked-page bundle remains readable for regression
+and the optional legacy gamma bridge.
 
 From the repository root, with the existing local reports:
 
 ```powershell
-python src/export_engine_materials.py reports/menu-fixture-materials-20261025/renders/horizontal-angle reports/camera02-transition-20261026/preview/poses.json reports/engine-materials-20261027
+python src/export_engine_materials.py reports/menu-fixture-materials-20261025/renders/horizontal-angle reports/camera02-transition-20261026/preview/poses.json reports/engine-textures-20261028
 python src/export_engine_ui.py reports/menu-effects-fix-8796132f9b234657a4a88218be9cb644 reports/menu3d-focused-4d627a9470c84b73bfc16ae467514310/FF000CB9-decoded/decoded.bin reports/engine-ui-20261028
+# Decode the twelve font variants once into separate, new directories.
+foreach ($size in 10,12,14,16,18,20,22,24,26,28,36,48) {
+    .\tools\Read-MFT.ps1 -Path "reports/POPData-extracted/menu/fonts/atlantis mf regular $size.mft" -OutputDirectory "reports/native-ui-fonts-20261029/$size" | Out-Null
+}
+python src/export_native_menu.py reports/menu-effects-fix-8796132f9b234657a4a88218be9cb644 reports/engine-ui-20261028/menu.ojui reports/engine-ui-scale-20261029 --fonts reports/native-ui-fonts-20261029
 ```
 
-Outputs must be new directories. Both bundles already exist on the development
+Outputs must be new directories. These bundles already exist on the development
 host; skip export when using them. Use the widgets-capable menu report, not the
 older prototype catalog without widget entries.
 
 From `engine/`:
 
 ```powershell
-cargo run -p jade-viewer -- --scene ../reports/engine-materials-20261027/menu.ojscene --menu ../reports/engine-ui-20261028/menu.ojui --validation
-cargo run -p jade-viewer -- --scene ../reports/engine-materials-20261027/menu.ojscene --menu ../reports/engine-ui-20261028/menu.ojui --validation --smoke
+cargo run -p jade-viewer -- --scene ../reports/engine-textures-20261028/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --validation
+cargo run -p jade-viewer -- --scene ../reports/engine-textures-20261028/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --validation --smoke
 ```
 
-Mouse hover/click and Up/Down/Tab + Enter/Space navigate. Escape returns or opens
-quit confirmation; during/after Camera02 it resets to the initial menu camera.
-The viewport is letterboxed to 4:3 on resize, including hit testing.
+Mouse hover/click and Up/Down/Tab + Enter/Space navigate. Left/Right adjusts a
+focused slider; clicking/dragging its bar also works. Wheel or DDS arrows scroll
+the eighteen action rows. Select a keyboard binding and press a key or mouse button;
+Escape cancels capture. Profile names accept 1-20 printable ASCII characters,
+typed directly (clipboard paste is not implemented), with five profiles maximum.
+Escape returns or opens quit confirmation; during/after Camera02 it resets to
+the initial menu camera. The viewport stays 4:3 on resize, including hit testing.
+
+**Native settings applied after confirmation:** gamma (0..100), ordinary-material filtering,
+window client size (640x480 through 1600x1200), and V-Sync. Disabling V-Sync requests
+Vulkan IMMEDIATE; if unavailable it stays enabled with an on-screen explanation.
+Resolution changes the window, not the desktop mode. Fog/fixture samplers remain
+linear; original mipmaps are not recovered. Other graphics, mouse/camera, game
+and audio controls are visibly disabled rather than pretending to affect absent systems.
+
+On leaving changed options with Back (or Escape), Yes applies and saves the draft,
+No discards it, and Cancel returns to editing without applying it. Gamma, filtering,
+window size and V-Sync remain at their committed values while editing and while
+the confirmation is open. Default Settings changes only the draft to research baselines,
+not independently verified original factory defaults. The committed settings,
+keyboard labels and up to five menu profiles are saved beside the native bundle
+as `menu.ojmenu` (`OJMNU001`). Settings are global, not per-profile. Creating,
+selecting or deleting a profile also saves profile state, without committing an
+unconfirmed settings draft. These profiles are independent menu identities,
+not original saved games; the game's `Profiles` directory is never used.
+Use one viewer per state file. Malformed state fails startup without overwriting
+the file; save errors are displayed. The first run asks for a profile, later runs
+use the saved active profile. Local `.ojmenu` files are ignored by Git.
+
+Native menus own gamma directly and reject `--settings` to prevent conflicting
+controllers. Their initial gamma is zero; `--gamma` can override the loaded value.
+Saved filtering takes precedence over the initial `--texture-filter` setting.
 
 Start New Game hides the UI and plays 541 precomputed poses at 60 Hz over nine
 seconds, then holds the final balcony pose. This ports playback into Rust, not the
@@ -100,11 +147,98 @@ by OpenJade; the original binary label/action chain is not newly proven here.
 No Prince, collision, BIK playback or next-level loading follows the transition.
 
 The 46-object scene uses 15,674 geometric triangles, 16,226 submitted triangles
-across 88 passes and 38 scene texture layers. The UI adds 76 512x512 tiles, preserving
-800x600 source placement. Fog and fixture UV phase remain frozen at the exported
-sample. Sorting is diagnostic, textures use base-level resampling, and native
+across 88 passes and 38 scene texture layers. The native UI adds six
+images (44 textures total), preserving the 800x600 layout coordinate system. Fog and fixture UV phase remain frozen at the exported
+sample. Sorting is diagnostic; scene textures now preserve native base-level dimensions.
+Linear filtering is the default, with optional generated mipmaps for comparison; native
 lighting/color-space parity remains unresolved. Stored constant-color rules and
 supported blend factors do not establish faithful whole-scene illumination.
+
+### Texture dimensions, filtering and mipmaps
+
+The current OJSCN003 exporter preserves all 38 source PNG base images exactly,
+including rectangular textures (32x32 through 256x256 in this scene). Padded
+512x512 transport slots are cropped without resampling before individual Vulkan
+image uploads. Older OJSCN001/002 packages remain readable, but dimensions lost
+in their earlier resampling cannot be restored: regenerate the scene package.
+
+Add `--texture-filter nearest`, `--texture-filter linear` (default), or
+`--texture-filter trilinear` to the native viewer command above. Nearest/linear
+select ordinary-material base-level filtering; the previously supported fog and
+fixture samplers retain bilinear filtering and their address modes. Trilinear
+enables generated mipmaps for all scene textures. UI images use linear/base-level filtering.
+No anisotropy or LOD bias is applied. These are comparison settings, not recovered
+original-game filtering settings.
+
+Original lower-level texture data exists, but the PNG bridge carries only the
+base image. Runtime mipmaps are generated by linear Vulkan blits down to 1x1
+in the selected sRGB or UNORM texture format, not imported from the game. Original mip selection, compressed-chain tails,
+and one fixture's extra data remain unresolved. Generated alpha mipmaps do not
+preserve cutout coverage and may thin distant foliage.
+
+See the [focused texture validation](docs/observations/2026-10-28-native-textures.md).
+
+### Color modulation and gamma
+
+Use `--color-pipeline srgb` (default) or `--color-pipeline legacy-unorm` with
+the same `--texture-filter linear` to compare explicit sRGB conversion against
+stored-value arithmetic. Both are diagnostic; original live states remain
+unverified. Without native menus, gamma is bypassed unless `--gamma` or the legacy
+`--settings` bridge is selected. Native menus apply their selected gamma directly
+after scene/UI composition; zero uses the recovered ramp, not a perfect identity.
+See the [gamma calculation and bridge](docs/observations/2026-10-28-gamma-bridge.md)
+and the preceding [color audit](docs/observations/2026-10-28-color-pipeline.md).
+
+A [bounded balcony comparison](docs/observations/2026-10-29-balcony-modulation.md)
+tests direct recorded vertex colors with texture MODULATE2X. It changes only
+13 mode-0 balcony draws; it is opt-in and not a verified lighting correction.
+The [cached-buffer and completeness audit](docs/observations/2026-10-29-menu-completeness.md)
+now verifies identical cached/primary balcony colors and unchanged static GPU
+upload. Active runtime state remains unverified. The current scene omits the
+scaled sky, moon, three bird cards and two fly-effect objects; source slots
+32/36/37 are decoded but never submitted. All 38 submitted image hashes match.
+Nineteen named light objects are inventoried, not implemented as dynamic lights.
+Fog probes find only partial balcony coverage; neither a global light addition
+nor denser fog is justified by this audit alone.
+
+The UI now uses linear minification/magnification, independently of scene
+filtering. OJUI0003 retains decoded logo pixels at 1024x256 and cursor pixels at
+128x128; their layout sizes remain 480x120 and 40x40 in the 800x600 reference space.
+All twelve MFT variants (10..48, with the original gaps) are exported. For each
+label, the renderer chooses the smallest available size at least as large as
+`label_size * 1.25 * viewport_width / 800`, or 48 when none is large enough.
+For an 18-unit label, this chooses 24 at 800x600 and 48 at 1600x1200.
+The 1.25 factor remains the existing layout hypothesis; this selection policy is
+OpenJade's, not a recovered original-game rule. Very large text can still enlarge
+the largest bitmap. Other DDS widgets have not all been restored to source size.
+See [UI scaling evidence](docs/observations/2026-10-29-ui-scaling.md).
+
+### Live Gamma control from the Python menus
+
+This optional **legacy OJUI0001** workflow is retained for comparison. It is not
+needed by the native detailed menus above. From the repository root, start the
+Python controls first (create/select a local
+simulation profile, then Options -> Graphics -> Advanced -> Gamma):
+
+```powershell
+python -B src/menu_simulation.py reports/menu-effects-fix-8796132f9b234657a4a88218be9cb644 --settings reports/engine-gamma-20261028/menu.ojsettings
+```
+
+In a second terminal, from `engine/`:
+
+```powershell
+cargo run -p jade-viewer -- --scene ../reports/engine-textures-20261028/menu.ojscene --menu ../reports/engine-ui-20261028/menu.ojui --settings ../reports/engine-gamma-20261028/menu.ojsettings --validation
+```
+
+Gamma previews live in Vulkan. Yes saves it, No restores the saved value, Cancel
+keeps the pending preview, and Default Settings previews zero. The committed gamma
+survives Python restarts in this OpenJade file; other settings remain session-only
+and simulated. One Python writer per file. This legacy path uses two windows;
+the OJUI0003 native interface has its own direct controls and `.ojmenu` persistence.
+
+For an independent fixed-value test, replace `--settings ...` with `--gamma 50`
+(integer 0..100). Omit both to bypass gamma. No OS display ramp is modified.
+See [calculation, transactions and limits](docs/observations/2026-10-28-gamma-bridge.md).
 
 ## Testing and evidence
 
@@ -117,17 +251,49 @@ cargo clippy --workspace -- -D warnings
 cargo test --workspace
 # From the repository root
 python -m unittest discover -s tests -p 'test_export_engine*.py'
+python -B -m unittest discover -s tests -p 'test_graphics_settings.py'
+python -B tests/check_native_ui_resources.py reports/engine-ui-scale-20261029 reports/POPData-extracted/menu/texture
+# Optional integration check: requires prepared local bundles, Tk and Vulkan.
+python -B tests/integration_gamma_bridge.py
 ```
 
-The integrated Vulkan smoke test presents 80 frames, resizes 800x600 -> 1024x720
--> 800x600, starts an accelerated test transition and returns to the menu. On the
+The integrated native-menu Vulkan smoke test presents 80 frames, resizes 800x600
+-> 1600x1200 -> 800x600, starts an accelerated test transition and returns to the menu. On the
 AMD Radeon RX 9070 XT it completed with zero validation errors. This does not
 measure original-game parity. Runtime interaction was separately inspected.
-Rust tests cover package validation, navigation, transition clamping/reset and
-letterbox coordinates. Historical research tests below are not rerun implicitly.
+Latest validation on 2026-10-29: 30 Rust tests passed. Confirmation coverage
+verifies that all four effective display controls remain unchanged during editing,
+Back, Cancel and No, and apply together on Yes; defaults and reload are covered.
+The earlier UI scaling checks also passed, including font selection and
+rectangular UI texture bounds/row preservation. Logo and cursor decoded pixels
+match their DDS sources byte-for-byte. The OJUI0003 legacy-unorm smoke and an
+interactive 1600x1200 inspection passed without Vulkan validation errors.
 
-Local evidence belongs under `reports/engine-ui-20261028/`. Neither screenshots nor
-game-derived bundles are added to Git. The actual game installation is not changed.
+Previous native-menu validation on 2026-10-28: 27 Rust tests passed, including
+transactions, profile/binding persistence, bounded input, dragging and native UI
+geometry. Formatting and Clippy with all targets/warnings denied passed. The
+new native-menu smoke traverses pages, changes gamma/filter/V-Sync, checks
+Cancel/No and plays Camera02 with resize; zero Vulkan validation errors.
+Interactive inspection also checked profile creation, Graphics Gamma, discard
+confirmation, Keyboard and quit in the actual Vulkan window.
+
+Earlier that day, three Python graphics-settings tests passed. The earlier three focused material-export tests also passed.
+Rust coverage includes package bounds, native texture rows, navigation, Camera02,
+letterboxing, presentation-format selection, settings parsing and all 101 gamma
+ramps. The complete Python simulation smoke passed with the bridge enabled.
+The live integration test observed previews 100 -> 0 -> 42 -> 0 through the real
+Python handlers and Vulkan consumer, including Cancel, No, Yes and Defaults;
+80 frames and two resizes completed with zero validation errors. Explicit gamma
+tests passed in both color pipelines, as did the bypass/checker regression.
+Historical research tests below are not rerun implicitly.
+
+Local evidence includes `reports/engine-ui-scale-20261029/` and
+`reports/native-ui-fonts-20261029/`. Earlier evidence is grouped by milestone: `reports/engine-native-menu-20261028/`,
+`reports/engine-ui-20261028/`,
+`reports/engine-textures-20261028/`, `reports/native-colors-20261028*`,
+`reports/native-gamma-20261028*` and `reports/engine-gamma-20261028/`.
+Screenshots, game-derived bundles, decompilation and `.ojsettings`/`.ojmenu` preferences
+are excluded from Git. The actual game installation is not changed.
 
 ## Architecture decisions and future runtime
 
@@ -135,17 +301,21 @@ Rust + ash + Vulkan is the selected runtime direction. Windows is the current
 implementation/test host; platform abstraction and Linux/macOS validation remain
 future work. `jade-assets` reads bounded research bundles; `jade-render-vulkan`
 owns graphics resources; `jade-viewer` handles input and the prototype state machine.
-The current UI is pre-rendered MFT/DDS layers with Rust hit testing, not a general
-widget/text-layout engine. Static resources are rebuilt on swapchain recreation;
+The current native UI uses MFT/DDS sprite atlases, dynamic Rust text/quads, hit
+testing and a transaction model. It remains a focused menu implementation, not
+a general game UI framework. The legacy baked-page reader remains compatible. Static resources are rebuilt on swapchain recreation;
 resource caching and a dedicated UI/animation architecture remain future work.
 
-PowerShell, C# and Python remain useful research tools rather than the runtime.
+PowerShell, C# and Python remain research/export tools. Python is not required
+while running a prepared native menu. The optional Python gamma bridge remains
+a legacy diagnostic controller. A broader input/game-settings system, per-profile
+game state and device bindings remain future work.
 See [foundation decisions](docs/decisions/0001-foundation.md), [external sources](references)
 and [license/legal notice](README.md#license--legal-disclaimer).
 
 ## Research status and validation
 
-The following table records research-tool results. Native runtime checks are listed
+The following table records historical research-tool results, not current feature limits. Native runtime checks are listed
 under [Testing and evidence](#testing-and-evidence); these are separate scopes.
 
 | Area | Implemented capability | Recorded validation |
@@ -279,14 +449,18 @@ Escape to cancel. This does not capture or bind a keyboard/gamepad device.
 
 ### Current limits and next work
 
-The background remains neutral: the original 3D scene, animations and transition
-timing are not implemented. Layouts are screenshot-based approximations, not
+In the separate Python window the background remains neutral. The decoded 3D
+scene and Camera02 transition are rendered in the native Vulkan window.
+Python layouts are screenshot-based approximations, not
 pixel-identical reproductions. The DDS cursor is a candidate whose identity and
 hotspot still need verification.
 
 Default Settings restores **simulation baselines**, not verified factory defaults.
-Resolution/gamma choices are simulated; no graphics or audio setting affects the
-system. Load is disabled, and New Game/Credits lead to explicit placeholders.
+With `--settings`, Gamma previews the emulated output ramp in the connected
+Vulkan viewer and its committed value persists. Without the bridge it remains a
+simulation control. Resolution and other graphics/audio choices remain simulated;
+no desktop display configuration is changed. Load is disabled, and Python
+New Game/Credits lead to explicit placeholders. See [live Gamma setup](#live-gamma-control-from-the-python-menus).
 
 See [simulation evidence](docs/observations/2026-10-16-complete-menu-simulation.md).
 
@@ -513,19 +687,19 @@ in `tools/ghidra/`. Executable copies, databases and recovered code remain local
 under ignored `reports/`; these optional dependencies are not needed for the menu
 simulation. Original game files remain read-only.
 
-Latest: [dynamic function table and callers](docs/observations/2026-10-18-native-function-table.md). Three direct resolver callers, descriptor construction/lookup/cleanup, and an execution consumer have been inspected. The descriptor registry is distinct from the category-dispatch table; camera token meanings remain unverified.
+Historical step: [dynamic function table and callers](docs/observations/2026-10-18-native-function-table.md). Three direct resolver callers, descriptor construction/lookup/cleanup, and an execution consumer have been inspected. The descriptor registry is distinct from the category-dispatch table; camera token meanings remain unverified.
 
-Latest category evidence: [dispatch mapping and vector-copy motif](docs/observations/2026-10-18-category-dispatch.md). Serialized IDs are remapped before execution. A selected three-word copy handler supports field-to-local copying in two camera-resource motifs; execution and camera-transform effects remain unverified.
+Historical category evidence: [dispatch mapping and vector-copy motif](docs/observations/2026-10-18-category-dispatch.md). Serialized IDs are remapped before execution. A selected three-word copy handler supports field-to-local copying in two camera-resource motifs; execution and camera-transform effects remain unverified.
 
-Latest flow evidence: [local vector and callers](docs/observations/2026-10-18-local-vector-flow.md). The two field-copy motifs are alternative paths in dynamic function 5755; its selected vector is returned, then copied or added by two callers. The upstream 5b82 calculation and actual camera effects remain unresolved.
+Historical flow evidence: [local vector and callers](docs/observations/2026-10-18-local-vector-flow.md). The two field-copy motifs are alternative paths in dynamic function 5755; its selected vector is returned, then copied or added by two callers. The upstream 5b82 calculation and actual camera effects remain unresolved.
 
-Latest continuation: [vector descriptors and consumers](docs/observations/2026-10-18-vector-consumers.md). Signatures for 5b82/5b83 are located; the sum passes through 5b83 and feeds a vector subtraction. Two linked tables are ambiguous, and the function bodies and coordinate space remain unresolved.
+Historical continuation: [vector descriptors and consumers](docs/observations/2026-10-18-vector-consumers.md). Signatures for 5b82/5b83 are located; the sum passes through 5b83 and feeds a vector subtraction. Two linked tables are ambiguous, and the function bodies and coordinate space remain unresolved.
 
-Latest resolution: [5b82/5b83 bodies and balcony-object links](docs/observations/2026-10-19-camera-function-bodies.md). Both bodies are located in Menu3D record B60024E5 and linked to the populated 263c/005d descriptor table. Shared balcony-camera behavior is established; active camera, field meaning and full 5b83 arithmetic remain unverified.
+Historical resolution: [5b82/5b83 bodies and balcony-object links](docs/observations/2026-10-19-camera-function-bodies.md). Both bodies are located in Menu3D record B60024E5 and linked to the populated 263c/005d descriptor table. Shared balcony-camera behavior is established; active camera, field meaning and full 5b83 arithmetic remain unverified.
 
-Latest arithmetic: [balcony vector bounds](docs/observations/2026-10-19-balcony-vector-bounds.md). Function 5b83 conditionally bounds each component; both balcony instances select mode 2. Runtime initialization of the gate and limits, active camera and coordinate space remain unknown.
+Historical arithmetic: [balcony vector bounds](docs/observations/2026-10-19-balcony-vector-bounds.md). Function 5b83 conditionally bounds each component; both balcony instances select mode 2. Runtime initialization of the gate and limits, active camera and coordinate space remain unknown.
 
-Latest writes: [bounds-writing callback](docs/observations/2026-10-19-bounds-writers.md). Callback index 5 links to four confirmed writes of fields 464/512. No direct writer for 172/276 was found in the eight linked blocks; live initialization and activation remain unresolved.
+Historical writes: [bounds-writing callback](docs/observations/2026-10-19-bounds-writers.md). Callback index 5 links to four confirmed writes of fields 464/512. No direct writer for 172/276 was found in the eight linked blocks; live initialization and activation remain unresolved.
 
 Gate follow-up: [field 276 and operation 1007](docs/observations/2026-10-20-bounds-gate.md). A scoped identifier search finds only the model definition in Menu3D and no occurrence in CameraAndGlobal. The inspected 1007 wrapper/helper shows no direct gate assignment; indirect effects and runtime initialization remain unresolved.
 
@@ -533,7 +707,7 @@ Current visual milestone: assemble the menu scenery under a fixed camera, shared
 
 External comparison: [Jaded bounding volumes](references/jaded.md), pinned to revision `8d55704c80adfcec4f3bcaeb2445dc9f68ef960e`. Its initial-limit fields and OBBox flag corroborate the observed TSoT layout. Editor-dependent fields and a different sphere predicate prevent assuming binary compatibility. Jaded is a later Ubisoft-derived reference; no source code is imported, and reuse permission has not been established. Activation and coordinate space still require TSoT evidence.
 
-Latest serialized source: [balcony geometry](docs/observations/2026-10-20-balcony-geometry.md). Both balcony GAOs contain the paired triplets loaded into the structure read by operations 2bc3/2bc5. A targeted inspector preserves their offsets and raw bytes; activation, subsequent mutation and runtime coordinate space remain unresolved.
+Historical serialized source: [balcony geometry](docs/observations/2026-10-20-balcony-geometry.md). Both balcony GAOs contain the paired triplets loaded into the structure read by operations 2bc3/2bc5. A targeted inspector preserves their offsets and raw bytes; activation, subsequent mutation and runtime coordinate space remain unresolved.
 
 ## Research test commands
 

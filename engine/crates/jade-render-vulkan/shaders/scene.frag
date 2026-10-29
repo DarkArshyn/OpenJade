@@ -11,7 +11,7 @@ layout(push_constant) uniform Material {
     vec4 shading; // alpha, RGB gain, alpha cutoff, sampler selector
 } material;
 void main() {
-    vec3 coords=vec3(uv*material.uvTransform.xy+material.uvTransform.zw,layer);
+    vec3 coords=vec3(uv*material.uvTransform.xy+material.uvTransform.zw,0.0);
     vec4 texel;
     if(material.shading.w<0.5) texel=texture(nearestTextures,coords);
     else if(material.shading.w<1.5) texel=texture(linearTextures,coords);

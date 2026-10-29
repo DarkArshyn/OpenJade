@@ -30,7 +30,7 @@ negates view Y, uses positive forward depth and maps the chosen near/far planes
 (0.1/1000, research settings) into [0,1]. The vertical FOV stays constant on resize;
 horizontal coverage changes with the viewport aspect ratio.
 
-Textures are resampled to 512x512 array layers, nearest sampling, repeat UV, no
+The historical version-1 export resampled textures to 512x512 array layers, with nearest sampling, repeat UV, no
 mipmaps. sRGB texture sampling and the sRGB swapchain perform the color conversions.
 The current shader multiplies sampled linear RGB by the exported diagnostic colors
 and discards alpha below 0.5. This does not establish the original lighting model.
@@ -82,3 +82,29 @@ last pose. Escape restores the initial camera/menu. The detailed settings/profil
 simulation is not part of this native UI yet. This is not a general UI layout engine
 or native track interpreter. Neither .ojscene nor .ojui contains code from the game;
 both contain game-derived data and must remain local and excluded from Git.
+
+## Version 3: native base dimensions
+
+`OJSCN003` retains the version-2 header, packed vertices, padded RGBA slots and
+draw table. Immediately after the draw table it appends `layers` pairs of
+little-endian u32 `(native_width, native_height)`. Each dimension must be nonzero
+and at most the slot width/height. Exact total extent is validated; no trailing
+bytes are accepted. Source RGBA pixels occupy the top-left of each slot with
+transparent padding. No image resampling occurs. The exporter rejects images
+larger than its current 512x512 transport slot rather than silently resizing.
+
+The loader extracts each row at its native width. Vulkan uses a separate
+single-layer image/view and descriptor set per texture; scene draws are split
+only at texture boundaries. UV scale, offsets, repeat and clamp behavior operate
+on the native image extent, not padding. UI bundle tiles remain 512x512 and use
+separate nearest/base-level sampling.
+
+Version 3 stores base images only. The optional trilinear diagnostic creates a
+full mip chain with linear sRGB GPU blits. This does not recover original mip
+content or sampler states. Version 1/2 packages continue using their stored slot
+dimensions. Re-export required to recover native dimensions from original PNGs.
+
+Color pipeline selection is a viewer option, not stored in the interchange.
+The default is sRGB texture decoding and attachment encoding. The diagnostic
+`legacy-unorm` option keeps stored-value arithmetic through blending and output.
+Generated mipmaps follow that format choice; original mipmaps remain absent.

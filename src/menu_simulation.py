@@ -36,10 +36,13 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report',type=Path)
     parser.add_argument('--smoke-test',action='store_true')
+    parser.add_argument('--settings',type=Path,help='OpenJade .ojsettings bridge for live native gamma')
     args=parser.parse_args()
+    from graphics_settings import SettingsBridge
+    bridge=SettingsBridge(args.settings) if args.settings else None
     root=tk.Tk()
     if args.smoke_test:root.withdraw()
-    viewer=Simulation(root,args.report)
+    viewer=Simulation(root,args.report,bridge)
     if args.smoke_test:smoke_test(viewer)
     else:root.mainloop()
 

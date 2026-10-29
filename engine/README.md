@@ -43,17 +43,22 @@ with that toolchain location.
 `Cargo.lock` is generated and should be committed for this application workspace.
 The toolchain is pinned to the tested Rust 1.99.1 release.
 
-## Integrated main menu and Camera02
+## Native menus and Camera02
 
 See [current workflow and controls](../README-dev.md#native-menu-prototype).
 
 ```powershell
-cargo run -p jade-viewer -- --scene ../reports/engine-materials-20261027/menu.ojscene --menu ../reports/engine-ui-20261028/menu.ojui --validation
+cargo run -p jade-viewer -- --scene ../reports/engine-textures-20261028/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --validation
 ```
 
 The UI and 3D scene share one render pass/window. UI is alpha blended after the
-scene with depth disabled. Main-menu navigation, Options landing page and quit
-confirmation are native. Detailed options/profiles remain in the Python simulation.
+scene with depth disabled. OJUI0003 supplies sprite/glyph atlases; Rust composes
+profile, main, options, keyboard/gamepad, game, graphics and sound screens with
+confirmations. Gamma, filtering, window size and V-Sync apply only after Back -> Yes;
+editing and Default Settings change a draft, No discards it, Cancel keeps editing.
+Unsupported controls are disabled. Profiles/preferences persist in an independent
+`.ojmenu` file beside the bundle. No Python controller is needed at runtime.
+Keyboard bindings are stored only; gamepad input and gameplay remain absent.
 Start New Game plays a baked 60 Hz, nine-second Camera02 trajectory and holds the
 balcony pose. Escape resets it. No gameplay follows. Letterboxing preserves 4:3
 rendering and mouse coordinates. The smoke mode accelerates time to exercise the
@@ -89,10 +94,13 @@ never automatically loaded from the game installation. The package, manifest and
 capture live under ignored `reports/`; `*.ojscene` is also ignored globally.
 
 The initial version-1 import excluded three fog panels and three fixture objects.
-The newer `export_engine_materials.py` / OJSCN002 import includes all six, with
+The newer `export_engine_materials.py` / OJSCN003 import includes all six, with
 source-over fog and two-pass fixtures; its `--time` selects a fixed material phase.
 Remaining limits:
-textures use nearest sampling and 512x512 array layers without mipmaps. Colors are
+original mipmaps are not imported. OJSCN003 preserves native base dimensions;
+`--texture-filter nearest|linear|trilinear` compares ordinary nearest/base-level,
+linear/base-level (default), and generated trilinear mipmaps. Fog/fixture samplers
+remain linear; UI uses linear/base-level sampling. Colors are
 those of the research export, not verified native lighting. UI and camera playback are enabled with `--menu`; gameplay remains absent. The near/far planes (0.1/1000) are chosen research values.
 See [interchange specification](../docs/formats/engine-scene-interchange.md).
 
@@ -113,10 +121,64 @@ See [interchange specification](../docs/formats/engine-scene-interchange.md).
   presented frames. Vulkan errors make the smoke process return failure.
   Game-derived resources are loaded only from an explicit local `--scene` package.
 
-Next: faithful lighting/materials, detailed native UI controls and general animation systems.
+Next: faithful lighting/materials, remaining settings backed by real systems, UI scaling and general animation systems.
 Create `assets/scene/game-specific` crates when their first implemented behavior
 is introduced. Keep the existing research tools in the repository root.
 
 Original assets remain outside source control. Tests of Windows do not establish
 Linux/macOS compatibility. No desktop settings or Vulkan layer registry entries
 are modified by the probe.
+
+## Texture validation (2026-10-28)
+
+The 38 scene textures use individual GPU images at their decoded dimensions.
+The interchange's padding is never uploaded as texture content. Mipmap generation
+checks sRGB format blit/filter support and fails explicitly if unavailable.
+Generated chains are diagnostic; alpha coverage and original mip data are not
+recovered. GPU resources are still rebuilt on swapchain resize, including each
+texture upload; this prototype path is not optimized yet.
+
+```powershell
+cargo run -p jade-viewer -- --scene ../reports/engine-textures-20261028/menu.ojscene --menu ../reports/engine-ui-20261028/menu.ojui --texture-filter trilinear --validation
+```
+
+All three settings passed 80-frame resize/Camera02 smoke tests with zero Vulkan
+validation errors on the AMD RX 9070 XT. The checker and OJSCN001 regression runs
+also passed. See [evidence and limitations](../docs/observations/2026-10-28-native-textures.md).
+
+## Color comparison
+
+Keep the scene and filter identical and compare `--color-pipeline srgb` (default)
+with `--color-pipeline legacy-unorm`. The latter uses UNORM textures and an UNORM
+attachment, including blending, while retaining SRGB_NONLINEAR presentation.
+Neither mode is yet established as the original live menu configuration.
+Without OJUI0003 native menus the default bypasses gamma. Optional `--gamma 0..100` or `--settings PATH`
+emulates the recovered output ramp after composition without changing desktop gamma. Mipmap blits
+use the selected texture format, so prefer `--texture-filter linear` when isolating
+the base-image color comparison. Unsupported presentation formats fail explicitly.
+See [native trace and limits](../docs/observations/2026-10-28-color-pipeline.md).
+
+## Legacy gamma bridge
+
+OJUI0003 has native gamma controls and rejects `--settings`. The bridge below
+remains available with the OJUI0001 bundle or scene-only viewer for comparisons.
+
+The Python full-menu simulation can publish a gamma preview/committed value to
+an OpenJade `.ojsettings` file. Run it first, then pass that same file to
+`jade-viewer --settings PATH`. The viewer polls at 100 ms and retains its last
+valid value on a malformed/missing update. Only gamma is linked so far.
+`--gamma 0..100` is an alternative fixed-value option; it cannot be combined with
+`--settings`. Without either (and without OJUI0003), gamma is bypassed. A second render subpass applies
+the ramp after scene and UI blending in display-value space, preserving alpha.
+See [launch commands](../README-dev.md#live-gamma-control-from-the-python-menus)
+and [native calculation](../docs/observations/2026-10-28-gamma-bridge.md).
+
+## Interface scaling (2026-10-29)
+
+The current OJUI0003 bundle preserves the 1024x256 logo and 128x128 cursor pixels,
+and includes twelve MFT variants. Rust selects a font based on actual letterboxed
+viewport pixels. Linear UI sampling replaces nearest filtering; other scene
+filtering remains separate. The 800x600 layout and sprite display sizes are retained.
+Use the new bundle path above; old OJUI0001/2 bundles do not contain these resources.
+Their loaders remain supported. See [export commands](../README-dev.md#native-menu-prototype)
+and [evidence/limits](../docs/observations/2026-10-29-ui-scaling.md).

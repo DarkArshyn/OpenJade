@@ -13,7 +13,27 @@ pub struct Draw {
     /// UV scale/offset, alpha, RGB gain, alpha cutoff, sampler (0/1/2).
     pub parameters: [f32; 8],
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum TextureFilter {
+    Nearest,
+    #[default]
+    Linear,
+    Trilinear,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum ColorPipeline {
+    #[default]
+    Srgb,
+    LegacyUnorm,
+}
 pub struct Scene {
+    /// Diagnostic choice, not a recovered original runtime state.
+    pub color_pipeline: ColorPipeline,
+    /// Actual base-level dimensions inside each transport slot.
+    pub texture_sizes: Vec<[u32; 2]>,
+    /// First UI texture; UI filtering is independent of scene filtering.
+    pub ui_start: u32,
+    pub filter: TextureFilter,
     /// Packed world XYZ, native UV, diagnostic RGB, texture-array layer (nine floats).
     pub vertices: Vec<f32>,
     pub width: u32,
@@ -38,10 +58,16 @@ impl Scene {
         Self::decode(&bytes)
     }
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
-        if bytes.len() < 76 || (&bytes[..8] != b"OJSCN001" && &bytes[..8] != b"OJSCN002") {
+        if bytes.len() < 76
+            || (&bytes[..8] != b"OJSCN001"
+                && &bytes[..8] != b"OJSCN002"
+                && &bytes[..8] != b"OJSCN003")
+        {
             return Err(invalid("Invalid scene header/version"));
         }
-        let version2 = &bytes[..8] == b"OJSCN002";
+        let version3 = &bytes[..8] == b"OJSCN003";
+        let version2 = version3 || &bytes[..8] == b"OJSCN002";
+
         let word = |offset| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
         let (count, width, height, layers) = (word(8), word(12), word(16), word(20));
         if count == 0
@@ -107,6 +133,7 @@ impl Scene {
                 }
             }
         }
+        let mut texture_sizes = vec![[width, height]; layers as usize];
         let mut draws = Vec::new();
         if version2 {
             let end = expected as usize;
@@ -114,8 +141,21 @@ impl Scene {
                 return Err(invalid("Missing draw table"));
             }
             let count = word(end) as usize;
-            if count == 0 || count > 100_000 || end + 4 + count * 48 != bytes.len() {
+            if count == 0
+                || count > 100_000
+                || end + 4 + count * 48 + if version3 { layers as usize * 8 } else { 0 }
+                    != bytes.len()
+            {
                 return Err(invalid("Invalid draw table extent"));
+            }
+            if version3 {
+                for (i, size) in texture_sizes.iter_mut().enumerate() {
+                    let offset = end + 4 + count * 48 + i * 8;
+                    *size = [word(offset), word(offset + 4)];
+                    if size[0] == 0 || size[1] == 0 || size[0] > width || size[1] > height {
+                        return Err(invalid("Invalid native texture dimensions"));
+                    }
+                }
             }
             let mut cursor = 0u32;
             for i in 0..count {
@@ -158,6 +198,10 @@ impl Scene {
             });
         }
         Ok(Self {
+            texture_sizes,
+            ui_start: layers,
+            filter: TextureFilter::default(),
+            color_pipeline: ColorPipeline::default(),
             vertices,
             width,
             height,
@@ -166,6 +210,22 @@ impl Scene {
             pixels: bytes[vertex_end as usize..expected as usize].to_vec(),
             draws,
         })
+    }
+    /// Extract rows without resampling or including transport padding.
+    pub fn texture_pixels(&self, layer: usize) -> Vec<u8> {
+        let [w, h] = self.texture_sizes[layer];
+        let start = layer * self.width as usize * self.height as usize * 4;
+        (0..h as usize)
+            .flat_map(|y| {
+                let stride = if layer >= self.ui_start as usize {
+                    w
+                } else {
+                    self.width
+                };
+                let row = start + y * stride as usize * 4;
+                self.pixels[row..row + w as usize * 4].iter().copied()
+            })
+            .collect()
     }
     /// Five vec4 push constants. Vulkan's positive-height viewport requires negative view Y.
     pub fn camera_constants(&self, aspect: f32) -> [f32; 20] {
@@ -296,3 +356,65 @@ mod material_tests {
 }
 
 pub mod ui;
+
+#[cfg(test)]
+mod native_texture_tests {
+    use super::*;
+    #[test]
+    fn crops_transport_rows_without_resampling() {
+        let s = Scene {
+            vertices: vec![],
+            width: 3,
+            height: 2,
+            layers: 1,
+            pixels: (0u8..24).collect(),
+            camera: [0.; 13],
+            draws: vec![],
+            texture_sizes: vec![[2, 2]],
+            ui_start: 1,
+            filter: TextureFilter::Linear,
+            color_pipeline: ColorPipeline::default(),
+        };
+        assert_eq!(
+            s.texture_pixels(0),
+            [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15, 16, 17, 18, 19]
+        );
+    }
+    #[test]
+    fn validates_v3_dimensions_and_extent() {
+        let mut b = b"OJSCN003".to_vec();
+        for v in [3u32, 2, 1, 1] {
+            b.extend(v.to_le_bytes());
+        }
+        for v in [0f32, 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1., 60.] {
+            b.extend(v.to_le_bytes());
+        }
+        for _ in 0..3 {
+            for v in [0f32, 0., 2., 0., 0., 1., 1., 1., 0.] {
+                b.extend(v.to_le_bytes());
+            }
+        }
+        b.extend([10, 20, 30, 40, 0, 0, 0, 0]);
+        for v in [1u32, 0, 3, 0, 1] {
+            b.extend(v.to_le_bytes());
+        }
+        for v in [1f32, 1., 0., 0., 1., 1., 0.5, 0.] {
+            b.extend(v.to_le_bytes());
+        }
+        b.extend(1u32.to_le_bytes());
+        b.extend(1u32.to_le_bytes());
+        let s = Scene::decode(&b).unwrap();
+        assert_eq!(s.texture_sizes, [[1, 1]]);
+        assert_eq!(s.texture_pixels(0), [10, 20, 30, 40]);
+        assert!(Scene::decode(&b[..b.len() - 1]).is_err());
+        let n = b.len();
+        b[n - 8..n - 4].copy_from_slice(&3u32.to_le_bytes());
+        assert!(Scene::decode(&b).is_err());
+        b[n - 8..n - 4].copy_from_slice(&0u32.to_le_bytes());
+        assert!(Scene::decode(&b).is_err());
+    }
+}
+
+pub mod settings;
+
+pub mod native_ui;

@@ -128,7 +128,7 @@ class Screens:
         elif page in ('effects','advanced'):
             self.box((155,95,590,180));self.box((148,296,598,220 if page=='effects' else 170))
             self.slider('Resolution',155,'graphics',0,['640x480x32','800x600x32','1024x768x32','1280x960x32','1600x1200x32'],start=427,end=691)
-            self.slider('Gamma',217,'graphics',1,[f'{i/10:.2f}' for i in range(11)],start=427,end=691)
+            self.slider('Gamma',217,'graphics',1,[f'{i/100:.2f}' for i in range(101)],start=427,end=691)
             self.text('Effects',31,323,16 if page=='effects' else 12,action=('route','effects'))
             self.text('Advanced',31,354,16 if page=='advanced' else 12,action=('route','advanced'))
             groups=([('Special Effects',['High','Medium','Low']),('Shadow Effects',['High','Medium','None']),('Water Effects',['On','Off']),('Fog',['On','Off'])] if page=='effects' else [('Filtering',['Trilinear','Bilinear','None']),('V-Sync.',['Disable','Enable']),('Texture Quality',['High','Low'])])
@@ -192,9 +192,13 @@ class Screens:
 
 
 class CompleteSimulation:
-    def __init__(self,root,report):
+    def __init__(self,root,report,settings_bridge=None):
         import tkinter as tk
         self.root=root;self.screens=Screens(report);self.model=Model()
+        self.settings_bridge=settings_bridge
+        if settings_bridge:
+            self.model.settings['graphics'][1]=f'{settings_bridge.saved/100:.2f}'
+            self.model.save()
         self.page='create';self.modal=None;self.editing=None;self.typed='';self.hover=None
         self.focus=0;self.pressed=None;self.drag=None;self.mouse=None;self.closed=False
         root.title('OpenJade - menu simulation');root.resizable(False,False)
@@ -211,6 +215,11 @@ class CompleteSimulation:
         self.redraw();self.canvas.focus_set()
 
     def redraw(self):
+        if self.settings_bridge:
+            try:
+                self.settings_bridge.publish(round(float(self.model.settings['graphics'][1])*100),round(float(self.model.saved['graphics'][1])*100))
+                self.status.set('Gamma is previewed by the native viewer via the settings bridge. Other controls remain simulated.')
+            except (OSError,ValueError) as error:self.status.set('Gamma bridge: '+str(error))
         from PIL import ImageTk
         image,self.hits=self.screens.render(self.page,self.model,self.hover,self.modal,self.typed,self.editing)
         self.picture=ImageTk.PhotoImage(image);self.canvas.delete('all');self.canvas.create_image(0,0,image=self.picture,anchor='nw')
@@ -260,7 +269,9 @@ class CompleteSimulation:
                 if answer=='Yes':self.model.save();self.show(self.destination)
                 elif answer=='No':self.model.discard();self.show(self.destination)
                 else:self.modal=None;self.redraw()
-            elif modal=='quit' and answer=='Yes':self.closed=True;self.root.destroy()
+            elif modal=='quit' and answer=='Yes':
+                if self.settings_bridge:self.settings_bridge.publish(round(float(self.model.saved['graphics'][1])*100),round(float(self.model.saved['graphics'][1])*100))
+                self.closed=True;self.root.destroy()
             elif modal=='delete' and answer=='Yes':
                 self.model.profiles.remove(self.model.selected)
                 if self.model.active==self.model.selected:self.model.active=None

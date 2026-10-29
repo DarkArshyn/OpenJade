@@ -53,3 +53,11 @@
 
 # Local UI bundles include extracted interface assets.
 *.ojui
+
+# OpenJade-owned local graphics preferences
+*.ojsettings
+*.ojsettings.*.tmp
+
+# Local native viewer profiles and settings
+*.ojmenu
+*.ojmenu.*.tmp

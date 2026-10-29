@@ -144,6 +144,9 @@ impl Menu {
                 ]);
             }
         }
+        scene
+            .texture_sizes
+            .extend(vec![[512, 512]; layers as usize]);
         scene.pixels.extend_from_slice(pixels);
         scene.layers += layers;
         Ok(Self {
@@ -337,6 +340,10 @@ mod invalid_bundle_tests {
     #[test]
     fn malformed_bundle_does_not_mutate_scene() {
         let mut scene = Scene {
+            texture_sizes: vec![[512, 512]],
+            ui_start: 1,
+            filter: Default::default(),
+            color_pipeline: Default::default(),
             vertices: vec![],
             width: 512,
             height: 512,

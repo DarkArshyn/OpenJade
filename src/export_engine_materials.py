@@ -1,4 +1,4 @@
-"""Export verified fog/fixture passes from existing research exports to OJSCN002.
+"""Export verified fog/fixture passes from existing research exports to OJSCN003.
 
 Effective time is a chosen sample, not a captured original-game animation phase.
 Original inputs are read only. Lighting selectors 0/3 remain explicitly diagnostic.
@@ -23,7 +23,15 @@ def pass_parameters(stage, time):
     return mode, [*stage['scale'], *offset, stage['alpha'], 2., 0., 1.]
 
 
-def convert(source, camera, output, time=0.):
+BALCONY = 'Menu3D_FarahRoom_Balcony.gao'
+
+
+def balcony_gain(name, mode, stages, enabled):
+    """Isolate the unverified direct-color MODULATE2X hypothesis."""
+    return 2. if enabled and name == BALCONY and mode == 0 and not stages else 1.
+
+
+def convert(source, camera, output, time=0., balcony_modulate2x=False):
     if not math.isfinite(time) or time < 0: raise ValueError('Invalid effective time')
     if output.exists(): raise FileExistsError(output)
     report = json.loads((source/'scene.json').read_text(encoding='utf-8'))
@@ -32,6 +40,12 @@ def convert(source, camera, output, time=0.):
     accepted = {o['name']: o for o in report['accepted']}
     if len(accepted) != len(report['accepted']) or any(o['omitted_groups'] for o in accepted.values()):
         raise ValueError('Ambiguous or incomplete object export')
+    if balcony_modulate2x:
+        target = accepted.get(BALCONY, {})
+        if (report['source_sha256'] != '96244fe330c11acdf2a87a7c8a410225b224f5f1b9f264834425848cbf4d00eb'
+                or target.get('key') != '0x30000CD9'
+                or target.get('triangles') != 8898):
+            raise ValueError('Unsupported balcony diagnostic source')
     materials = {m['slot']: m for m in report['materials']}
     matrix = poses['poses'][0]['matrix']
     if poses['poses'][0]['time'] != 0: raise ValueError('Expected initial Camera02')
@@ -89,7 +103,7 @@ def convert(source, camera, output, time=0.):
                 mode,params=pass_parameters(stage,time)
                 passes.append((f'material-{slot}-stage-{i}.png',mode,params))
         else:
-            passes=[(f'material-{slot}.png',0,[1.,1.,0.,0.,1.,1.,.5,0.])]
+            passes=[(f'material-{slot}.png',0,[1.,1.,0.,0.,1.,balcony_gain(g['name'],color['mode'],material['stages'],balcony_modulate2x),.5,0.])]
         for image,mode,params in passes:
             if image not in image_names: image_names.append(image)
             layer=image_names.index(image);first=len(expanded)
@@ -101,31 +115,36 @@ def convert(source, camera, output, time=0.):
                 expanded.append([*vertex,float(layer)])
             draws.append((first,len(g['vertices']),mode,0 if mode else 1,params))
             audit.append(dict(object=g['name'],material=material['key'],texture=image,blend=mode,depth_write=mode==0,
-                              parameters=params,color_mode=color['mode'],color_status='verified constant x2' if color['mode']==2 else 'exported vertex colors; active runtime lighting unresolved'))
+                              parameters=params,color_mode=color['mode'],color_status='verified constant x2' if color['mode']==2 else ('balcony direct-color x2 hypothesis; runtime path unverified' if balcony_gain(g['name'],color['mode'],material['stages'],balcony_modulate2x)==2 else 'exported vertex colors; active runtime lighting unresolved')))
     size=512;pixels=bytearray();textures=[]
     for name in image_names:
         path=source/name
         with Image.open(path) as image:
             original=image.size
-            pixels.extend(image.convert('RGBA').resize((size,size),Image.Resampling.NEAREST).tobytes())
+            if not (0 < image.width <= size and 0 < image.height <= size):
+                raise ValueError('Texture exceeds bounded 512x512 storage slot')
+            padded=Image.new('RGBA',(size,size))
+            padded.paste(image.convert('RGBA'),(0,0))
+            pixels.extend(padded.tobytes())
         textures.append(dict(file=name,original_size=original,sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
     values=camera_values+[f for v in expanded for f in v]+[f for d in draws for f in d[4]]
     if not all(math.isfinite(x) for x in values): raise ValueError('Non-finite export')
-    blob=bytearray(b'OJSCN002');blob.extend(struct.pack('<4I13f',len(expanded),size,size,len(image_names),*camera_values))
+    blob=bytearray(b'OJSCN003');blob.extend(struct.pack('<4I13f',len(expanded),size,size,len(image_names),*camera_values))
     for v in expanded: blob.extend(struct.pack('<9f',*v))
     blob.extend(pixels);blob.extend(struct.pack('<I',len(draws)))
     for first,count,mode,write,params in draws: blob.extend(struct.pack('<4I8f',first,count,mode,write,*params))
+    for texture in textures: blob.extend(struct.pack('<2I',*texture['original_size']))
     if len(blob)>256*1024*1024: raise ValueError('Package too large')
     output.mkdir(parents=True,exist_ok=False)
     (output/'menu.ojscene').write_bytes(blob)
-    manifest=dict(version=2,source_sha256=report['source_sha256'],source_obj_sha256=hashlib.sha256((source/'scene.obj').read_bytes()).hexdigest(),
+    manifest=dict(version=3,source_sha256=report['source_sha256'],source_obj_sha256=hashlib.sha256((source/'scene.obj').read_bytes()).hexdigest(),
         source_report_sha256=hashlib.sha256((source/'scene.json').read_bytes()).hexdigest(),camera_sha256=hashlib.sha256(camera.read_bytes()).hexdigest(),
-        package_sha256=hashlib.sha256(blob).hexdigest(),object_count=len(counts),objects=counts,geometry_triangles=sum(counts.values()),
+        balcony_modulate2x_diagnostic=balcony_modulate2x,package_sha256=hashlib.sha256(blob).hexdigest(),object_count=len(counts),objects=counts,geometry_triangles=sum(counts.values()),
         submitted_triangles=len(expanded)//3,texture_layers=len(image_names),textures=textures,draws=audit,effective_time=time,
         limitations=['Time is an explicit sample with chosen phase zero; no wall-clock animation',
                     'Fog sorted by object center; native global sorting unresolved',
                     'Mode 0/3 colors and sRGB/linear behavior remain diagnostic; faithful scene lighting is not established',
-                    '512x512 texture array resampling and base-level sampling; no original mip selection',
+                    'Native base-level dimensions and pixels preserved in padded transport slots; original mipmaps absent from PNG inputs; runtime mipmaps are generated diagnostics',
                     'No fire particles or actual light emission from the fixtures'])
     (output/'manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     print(f"{len(counts)} objects; {sum(counts.values())} geometry triangles; {len(expanded)//3} submitted triangles; {len(draws)} passes; {len(image_names)} textures")
@@ -134,4 +153,5 @@ if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('source',type=Path);p.add_argument('camera',type=Path);p.add_argument('output',type=Path)
     p.add_argument('--time',type=float,default=0.,help='Effective animation time in seconds (fixed sample)')
-    a=p.parse_args();convert(a.source,a.camera,a.output,a.time)
+    p.add_argument('--balcony-modulate2x',action='store_true',help='Diagnostic only: double mode-0 balcony modulation; not a verified lighting fix')
+    a=p.parse_args();convert(a.source,a.camera,a.output,a.time,a.balcony_modulate2x)

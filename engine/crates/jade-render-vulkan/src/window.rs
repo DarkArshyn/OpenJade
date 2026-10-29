@@ -61,6 +61,9 @@ pub struct Presenter {
     panel: Option<Panel>,
     scene: Option<Scene>,
     menu_frame: Option<([f32; 20], Option<u32>)>,
+    gamma: Option<u8>,
+    native_ui: Vec<f32>,
+    vsync: bool,
 }
 
 impl Presenter {
@@ -121,6 +124,9 @@ impl Presenter {
                 panel: None,
                 scene,
                 menu_frame: None,
+                gamma: None,
+                native_ui: Vec::new(),
+                vsync: true,
             };
             if validation {
                 this.messenger = this.debug_loader.create_debug_utils_messenger(
@@ -215,6 +221,37 @@ impl Presenter {
             Ok(this)
         }
     }
+    pub fn native_ui(&mut self, vertices: &[f32]) {
+        self.native_ui.clear();
+        self.native_ui.extend_from_slice(vertices);
+    }
+    pub fn set_filter(&mut self, filter: jade_assets::TextureFilter) {
+        if let Some(scene) = &mut self.scene {
+            if scene.filter != filter {
+                scene.filter = filter;
+                self.dirty = true;
+            }
+        }
+    }
+    pub fn set_vsync(&mut self, enabled: bool) -> Result<bool, vk::Result> {
+        if !enabled {
+            let modes = unsafe {
+                self.surface_loader
+                    .get_physical_device_surface_present_modes(self.physical, self.surface)?
+            };
+            if !modes.contains(&vk::PresentModeKHR::IMMEDIATE) {
+                return Ok(false);
+            }
+        }
+        if self.vsync != enabled {
+            self.vsync = enabled;
+            self.dirty = true;
+        }
+        Ok(true)
+    }
+    pub fn set_gamma(&mut self, value: Option<u8>) {
+        self.gamma = value;
+    }
     pub fn menu_frame(&mut self, camera: [f32; 13], vertex: Option<u32>) {
         let mut constants = [0.; 20];
         for i in 0..4 {
@@ -253,14 +290,16 @@ impl Presenter {
         let formats = self
             .surface_loader
             .get_physical_device_surface_formats(self.physical, self.surface)?;
-        let mut format = *formats
-            .iter()
-            .find(|f| f.format == vk::Format::B8G8R8A8_SRGB)
-            .or(formats.first())
-            .ok_or(vk::Result::ERROR_FORMAT_NOT_SUPPORTED)?;
-        if format.format == vk::Format::UNDEFINED {
-            format.format = vk::Format::B8G8R8A8_UNORM;
-        }
+        let srgb = self
+            .scene
+            .as_ref()
+            .is_none_or(|s| s.color_pipeline == jade_assets::ColorPipeline::Srgb);
+        let format =
+            select_color_format(&formats, srgb).ok_or(vk::Result::ERROR_FORMAT_NOT_SUPPORTED)?;
+        println!(
+            "Presentation: {:?} / {:?}",
+            format.format, format.color_space
+        );
         let size = self.window.inner_size();
         let extent = if caps.current_extent.width != u32::MAX {
             caps.current_extent
@@ -300,7 +339,11 @@ impl Presenter {
                 .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
                 .pre_transform(caps.current_transform)
                 .composite_alpha(alpha)
-                .present_mode(vk::PresentModeKHR::FIFO)
+                .present_mode(if self.vsync {
+                    vk::PresentModeKHR::FIFO
+                } else {
+                    vk::PresentModeKHR::IMMEDIATE
+                })
                 .clipped(true),
             None,
         )?;
@@ -358,10 +401,13 @@ impl Presenter {
             };
             d.reset_command_buffer(self.command, vk::CommandBufferResetFlags::empty())?;
             d.begin_command_buffer(self.command, &vk::CommandBufferBeginInfo::default())?;
-            self.panel
-                .as_ref()
-                .unwrap()
-                .draw(self.command, index as usize, self.menu_frame);
+            self.panel.as_ref().unwrap().draw(
+                self.command,
+                index as usize,
+                self.menu_frame,
+                self.gamma,
+                &self.native_ui,
+            )?;
             d.end_command_buffer(self.command)?;
             let wait = [self.acquired];
             let stage = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -419,5 +465,65 @@ impl Drop for Presenter {
             }
             self.instance.destroy_instance(None);
         }
+    }
+}
+
+// Never silently switch transfer functions or choose an HDR surface.
+fn select_color_format(
+    formats: &[vk::SurfaceFormatKHR],
+    srgb: bool,
+) -> Option<vk::SurfaceFormatKHR> {
+    let preferred = if srgb {
+        [vk::Format::B8G8R8A8_SRGB, vk::Format::R8G8B8A8_SRGB]
+    } else {
+        [vk::Format::B8G8R8A8_UNORM, vk::Format::R8G8B8A8_UNORM]
+    };
+    for wanted in preferred {
+        if let Some(f) = formats
+            .iter()
+            .find(|f| f.format == wanted && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
+        {
+            return Some(*f);
+        }
+    }
+    formats
+        .iter()
+        .find(|f| {
+            f.format == vk::Format::UNDEFINED && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
+        })
+        .map(|f| vk::SurfaceFormatKHR {
+            format: preferred[0],
+            color_space: f.color_space,
+        })
+}
+#[cfg(test)]
+mod color_format_tests {
+    use super::*;
+    #[test]
+    fn refuses_silent_transfer_change() {
+        let formats = [vk::SurfaceFormatKHR {
+            format: vk::Format::B8G8R8A8_UNORM,
+            color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
+        }];
+        assert!(select_color_format(&formats, true).is_none());
+        assert_eq!(
+            select_color_format(&formats, false).unwrap().format,
+            formats[0].format
+        );
+    }
+    #[test]
+    fn rejects_hdr_and_accepts_explicit_srgb_choice() {
+        let mut formats = [vk::SurfaceFormatKHR {
+            format: vk::Format::R8G8B8A8_SRGB,
+            color_space: vk::ColorSpaceKHR::HDR10_ST2084_EXT,
+        }];
+        assert!(select_color_format(&formats, true).is_none());
+        formats[0].color_space = vk::ColorSpaceKHR::SRGB_NONLINEAR;
+        assert!(select_color_format(&formats, true).is_some());
+        formats[0].format = vk::Format::UNDEFINED;
+        assert_eq!(
+            select_color_format(&formats, true).unwrap().format,
+            vk::Format::B8G8R8A8_SRGB
+        );
     }
 }
