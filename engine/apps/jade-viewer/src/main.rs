@@ -497,7 +497,7 @@ fn main() -> std::process::ExitCode {
         args.drain(i..i + 2);
     }
     if let Some(scene) = &scene {
-        println!("Texture filter: {:?}; original mipmaps unavailable; trilinear generates diagnostic mipmaps. UI uses linear/base-level filtering.", scene.filter);
+        println!("Texture filter: {:?}; plante2/tronc1 use native mipmaps when their sidecars are present; other trilinear mipmaps are generated. UI uses linear/base-level filtering.", scene.filter);
     }
     if let Some(i) = args.iter().position(|s| s == "--color-pipeline") {
         let mode = match args.get(i + 1).map(String::as_str) {

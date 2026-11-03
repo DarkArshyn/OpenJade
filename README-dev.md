@@ -2,7 +2,7 @@
 
 [Project overview](README.md)
 
-Current implementation status: **2026-10-29**. Original game inputs remain read-only.
+Current implementation status: **2026-11-03**. Original game inputs remain read-only.
 
 Latest completed work: original logo/cursor pixel dimensions, linear UI filtering
 and resolution-aware selection among twelve MFT variants. Detailed menus are composed and controlled directly in
@@ -51,7 +51,7 @@ is `game/TSoT-GOG`; no path is a bundled dependency or permission to redistribut
 | 2. Compression | Trace stored blocks and validate decompression | Recognized POP envelopes; [3,302 resources differentially validated](docs/observations/2026-10-13-lzo.md) |
 | 3. Menu textures and fonts | Decode required DDS/MFT resources and verify interpretation | DDS checked; MFT atlas/metrics used for experimental text. Exact layout/style remains unverified |
 | 4. Screen behavior | Document layout, colors, order and dependencies against original observations | Partial: MGM evidence and seventeen 800x600 screenshots; some behavior remains reconstructed |
-| 5. First rendered screen | Render reconstructed UI and original resources with independent code | Native detailed menu UI overlays 46 decoded 3D objects. Native scene texture dimensions, filtering/mipmap and color-pipeline comparisons, plus post-composition gamma are implemented. Lighting/fog fidelity and high-resolution UI remain unfinished |
+| 5. First rendered screen | Render reconstructed UI and original resources with independent code | Native detailed menu UI overlays 48 decoded 3D objects. Native scene texture dimensions, filtering/mipmap and color-pipeline comparisons, plus post-composition gamma are implemented. Lighting/fog fidelity and high-resolution UI remain unfinished |
 | 6. Interactive menu | Reproduce selection, input, navigation and transitions | Native detailed screens, profile creation/selection/deletion, keyboard-binding capture, settings/quit confirmations and Camera02 playback. Gamma, filtering, window resolution and V-Sync affect the viewer; committed preferences/profiles persist in an OpenJade file. Unsupported systems remain disabled; binding storage is not gameplay input |
 | 7. Game systems | Implement scene/object/animation/collision/audio/gameplay with tests | Early rendering runtime: depth, textures, fog/fixture passes, explicit color paths and post-composition gamma; baked 60 Hz Camera02 playback. General animation, collision, audio, actors and gameplay are unimplemented. Native lighting fidelity is unresolved |
 | 8. Native ports | Build and validate Linux/macOS | Not started |
@@ -87,7 +87,8 @@ and the optional legacy gamma bridge.
 From the repository root, with the existing local reports:
 
 ```powershell
-python src/export_engine_materials.py reports/menu-fixture-materials-20261025/renders/horizontal-angle reports/camera02-transition-20261026/preview/poses.json reports/engine-textures-20261028
+python src/assemble_menu_scene.py reports/menu3d-focused-4d627a9470c84b73bfc16ae467514310/FF000CB9-decoded/decoded.bin reports/menu-sky-moon-20261030/source-final --yaw 0 --pitch 0 --fov 59.37908
+python src/export_engine_materials.py reports/menu-sky-moon-20261030/source-final reports/camera02-transition-20261026/preview/poses.json reports/palm-runtime-20261101 --palm-source reports/menu3d-focused-4d627a9470c84b73bfc16ae467514310/FF000CB9-decoded/decoded.bin
 python src/export_engine_ui.py reports/menu-effects-fix-8796132f9b234657a4a88218be9cb644 reports/menu3d-focused-4d627a9470c84b73bfc16ae467514310/FF000CB9-decoded/decoded.bin reports/engine-ui-20261028
 # Decode the twelve font variants once into separate, new directories.
 foreach ($size in 10,12,14,16,18,20,22,24,26,28,36,48) {
@@ -103,8 +104,8 @@ older prototype catalog without widget entries.
 From `engine/`:
 
 ```powershell
-cargo run -p jade-viewer -- --scene ../reports/engine-textures-20261028/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --validation
-cargo run -p jade-viewer -- --scene ../reports/engine-textures-20261028/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --validation --smoke
+cargo run -p jade-viewer -- --scene ../reports/palm-runtime-20261101/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --validation
+cargo run -p jade-viewer -- --scene ../reports/palm-runtime-20261101/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --validation --smoke
 ```
 
 Mouse hover/click and Up/Down/Tab + Enter/Space navigate. Left/Right adjusts a
@@ -119,7 +120,7 @@ the initial menu camera. The viewport stays 4:3 on resize, including hit testing
 window client size (640x480 through 1600x1200), and V-Sync. Disabling V-Sync requests
 Vulkan IMMEDIATE; if unavailable it stays enabled with an on-screen explanation.
 Resolution changes the window, not the desktop mode. Fog/fixture samplers remain
-linear; original mipmaps are not recovered. Other graphics, mouse/camera, game
+linear; native mipmaps are recovered for the verified leaf and trunk textures. Other graphics, mouse/camera, game
 and audio controls are visibly disabled rather than pretending to affect absent systems.
 
 On leaving changed options with Back (or Escape), Yes applies and saves the draft,
@@ -146,17 +147,49 @@ native track decoder or original game scripting. The action is wired explicitly
 by OpenJade; the original binary label/action chain is not newly proven here.
 No Prince, collision, BIK playback or next-level loading follows the transition.
 
-The 46-object scene uses 15,674 geometric triangles, 16,226 submitted triangles
-across 88 passes and 38 scene texture layers. The native UI adds six
-images (44 textures total), preserving the 800x600 layout coordinate system. Fog and fixture UV phase remain frozen at the exported
-sample. Sorting is diagnostic; scene textures now preserve native base-level dimensions.
+The 48-object scene uses 15,813 geometric triangles, 16,365 submitted triangles
+across 90 passes and 39 scene texture layers. The native UI adds six
+images (45 textures total), preserving the 800x600 layout coordinate system. OJSCN004 advances the three fog panels and four hangfire passes from their
+exported phase using elapsed runtime seconds; lampion offsets remain static.
+The initial phase is chosen, not synchronized with the original game. Transparent passes are re-sorted by center depth for the active camera
+each frame; intersecting surfaces remain unresolved. Scene textures preserve native base-level dimensions.
 Linear filtering is the default, with optional generated mipmaps for comparison; native
 lighting/color-space parity remains unresolved. Stored constant-color rules and
 supported blend factors do not establish faithful whole-scene illumination.
 
+### Runtime material animation
+
+The [UV animation report](docs/observations/2026-10-30-material-animation.md)
+documents seven moving passes. Generate the optional animated format from the
+existing sky/moon source export (the output directory must not already exist):
+
+```powershell
+python src/export_engine_materials.py reports/menu-sky-moon-20261030/source-final reports/camera02-transition-20261026/preview/poses.json reports/menu-uv-motion-20261030/runtime --animate-uv
+```
+
+`--time` selects the initial sampled phase. Without `--animate-uv`, the exporter
+still writes a fixed OJSCN003 package. Existing OJSCN001/002/003 packages stay
+supported and static. OJSCN004 appends one pair of float32 UV rates per draw after
+the native-dimension table; the reader requires exact extent, finite rates and
+absolute rates <= 1024 cycles/second. This bound is a local format guard.
+
+A Presenter-owned monotonic clock survives swapchain rebuilds and is independent
+of Camera02 playback/reset. Runtime offsets use `(offset + rate * elapsed) mod 1`
+in f64 before uploading f32 fragment constants; zero-rate components are left
+unchanged. Scale, alpha, gain, blend, camera and geometry remain unchanged.
+The clock starts with viewer initialization and continues across menu pages;
+the original game's phase origin and pause semantics are not established.
+
+Validation: 37 workspace Rust tests, four exporter tests, Clippy with warnings
+denied, and an 80-frame Vulkan smoke run with zero validation errors. The new
+package preserves the previous binary payload byte-for-byte apart from its
+version header and the appended 720-byte rate table. Local evidence is in
+`reports/menu-uv-motion-20261030/verification.json`. This verifies integration,
+not original-game visual parity or light emission.
+
 ### Texture dimensions, filtering and mipmaps
 
-The current OJSCN003 exporter preserves all 38 source PNG base images exactly,
+The OJSCN003/004 exporter preserves all 39 source PNG base images exactly,
 including rectangular textures (32x32 through 256x256 in this scene). Padded
 512x512 transport slots are cropped without resampling before individual Vulkan
 image uploads. Older OJSCN001/002 packages remain readable, but dimensions lost
@@ -166,13 +199,16 @@ Add `--texture-filter nearest`, `--texture-filter linear` (default), or
 `--texture-filter trilinear` to the native viewer command above. Nearest/linear
 select ordinary-material base-level filtering; the previously supported fog and
 fixture samplers retain bilinear filtering and their address modes. Trilinear
-enables generated mipmaps for all scene textures. UI images use linear/base-level filtering.
+enables generated mipmaps for scene textures without imported native chains.
+The verified plante2/tronc1 passes use their native five/six-level chains with
+trilinear sampling independently of this diagnostic switch. UI images use linear/base-level filtering.
 No anisotropy or LOD bias is applied. These are comparison settings, not recovered
 original-game filtering settings.
 
-Original lower-level texture data exists, but the PNG bridge carries only the
-base image. Runtime mipmaps are generated by linear Vulkan blits down to 1x1
-in the selected sRGB or UNORM texture format, not imported from the game. Original mip selection, compressed-chain tails,
+The PNG bridge carries only the base image. The bounded `menu.leaf` and
+`menu.trunk` sidecars now preserve native lower levels for two verified textures.
+For other textures, diagnostic mipmaps are generated by linear Vulkan blits down
+to 1x1 in the selected sRGB or UNORM format. Broader native mip selection, compressed-chain tails,
 and one fixture's extra data remain unresolved. Generated alpha mipmaps do not
 preserve cutout coverage and may thin distant foliage.
 
@@ -191,12 +227,21 @@ and the preceding [color audit](docs/observations/2026-10-28-color-pipeline.md).
 
 A [bounded balcony comparison](docs/observations/2026-10-29-balcony-modulation.md)
 tests direct recorded vertex colors with texture MODULATE2X. It changes only
-13 mode-0 balcony draws; it is opt-in and not a verified lighting correction.
+13 mode-0 balcony draws in the original diagnostic. The default export now applies RGB MODULATE2X to the 20 masonry triangles of material `0x30000CA0` on instance `0x30000CD9`. Two GOG Direct3D 9 captures matched the 60 native indices (FNV-1a `F90761B1`). Stage 0 combined TEXTURE and DIFFUSE with MODULATE2X for RGB and MODULATE for alpha. The second capture confirmed a null pixel shader. The broader balcony override remains opt-in. For this masonry draw the exporter defaults to `--masonry-fog normal` (GOG `InvertFogRange=0`). Use `inverted` for the measured value 1 or `off` for comparison. The vertex shader uses camera depth, the captured 8 to 35 range and strength 0.6. The legacy UNORM path blends toward RGB (52, 78, 95) after texture modulation. A subsequent fixed-menu capture matched the same shader and fog state on 16 balcony groups, both trunk groups across eight instance transforms and two groups of Menu3D_plante5. These 34 opaque draws now use the selected fog mode.
+
+The 72-triangle non-indexed draw on plante2 (instance 30000CCF, material 30000CB0) also uses normal vertex fog and MODULATE2X. Its 216 live diffuse RGB values match the export in draw order. Shader 45B71404 passes the color through and declares an unused normal. For this draw, keep the generated `menu.leaf` file beside the scene. It carries 216 native corner alpha bytes and four lower BC3 mip levels decoded to RGBA.
+
+The tronc1 draw (instance 30000CBF, material 30000C95) now uses the live-verified RGB MODULATE2X operation. All 384 exported corner colors matched the GOG vertex buffer; the shader passes them through. The [trunk filtering audit](docs/observations/2026-11-03-trunk-filtering.md) also verifies native base texels and six mip levels; the `menu.trunk` sidecar now supplies all six levels for the verified tronc1 pass.
+
+The [background contribution measurement](docs/observations/2026-11-03-leaf-background.md) identifies tronc1 behind the sampled leaf pixel. For plante2, the viewer uses all five levels with trilinear filtering, tests texture alpha times vertex alpha strictly above 150/255, blends by source alpha, tests depth and does not write depth. The earlier depth-write assumption was corrected by a direct GOG capture. The [aligned framebuffer comparison](docs/observations/2026-11-03-native-mips-aligned.md) confirms tronc1, plante2 and fog3 contributions at the measured patch. Two later native contributions and phase alignment remain unresolved; no global lighting adjustment was made. The constants were captured in the menu pose; reuse during the balcony zoom is provisional.
 The [cached-buffer and completeness audit](docs/observations/2026-10-29-menu-completeness.md)
 now verifies identical cached/primary balcony colors and unchanged static GPU
-upload. Active runtime state remains unverified. The current scene omits the
-scaled sky, moon, three bird cards and two fly-effect objects; source slots
-32/36/37 are decoded but never submitted. All 38 submitted image hashes match.
+upload. Active runtime state on the other mode-0 balcony draws remains unverified. The [sky and moon restoration](docs/observations/2026-10-30-sky-moon.md)
+adds two scaled objects with bounded material states: 48 objects and 39 image
+layers are now exported. Bird cards and fly-effect objects remain excluded.
+The preceding 46-object audit found source slots 32/36/37 unsubmitted; slot 32
+is now submitted. The [native viewer now re-sorts transparent passes each frame](docs/observations/2026-10-30-camera-transparency.md)
+using the active camera; centroid-based ordering remains approximate.
 Nineteen named light objects are inventoried, not implemented as dynamic lights.
 Fog probes find only partial balcony coverage; neither a global light addition
 nor denser fog is justified by this audit alone.
@@ -227,7 +272,7 @@ python -B src/menu_simulation.py reports/menu-effects-fix-8796132f9b234657a4a882
 In a second terminal, from `engine/`:
 
 ```powershell
-cargo run -p jade-viewer -- --scene ../reports/engine-textures-20261028/menu.ojscene --menu ../reports/engine-ui-20261028/menu.ojui --settings ../reports/engine-gamma-20261028/menu.ojsettings --validation
+cargo run -p jade-viewer -- --scene ../reports/menu-uv-motion-20261030/runtime/menu.ojscene --menu ../reports/engine-ui-20261028/menu.ojui --settings ../reports/engine-gamma-20261028/menu.ojsettings --validation
 ```
 
 Gamma previews live in Vulkan. Yes saves it, No restores the saved value, Cancel
@@ -251,6 +296,7 @@ cargo clippy --workspace -- -D warnings
 cargo test --workspace
 # From the repository root
 python -m unittest discover -s tests -p 'test_export_engine*.py'
+python -m unittest discover -s tests -p 'test_native_mips.py'
 python -B -m unittest discover -s tests -p 'test_graphics_settings.py'
 python -B tests/check_native_ui_resources.py reports/engine-ui-scale-20261029 reports/POPData-extracted/menu/texture
 # Optional integration check: requires prepared local bundles, Tk and Vulkan.
@@ -672,6 +718,30 @@ The controller investigation also separates identifier words from float values.
 
 The linked observations contain sample hashes, offsets, commands and local report
 names. Reports are excluded from Git; their absence in a fresh checkout is expected.
+
+### Palm deformation research
+
+Seven palms use the type-1 vertex deformation in the native viewer. The
+[component layout](docs/observations/2026-10-30-palm-component-layout.md)
+identifies the instance parameters. The [runtime verification](docs/observations/2026-11-01-palm-runtime.md)
+covers effective frame time, the 1,024-entry sine table and both local-axis
+modes. The OJSCN005 export adds 4,536 animated corners and includes the OJSCN004
+material motion. Palm6, palm7 and palm9 require further layout research.
+Two left-side foliage patches in the original recording show a cycle of about
+4.17 seconds, consistent with the predicted 4.19 seconds. See the
+[video period measurement](docs/observations/2026-11-01-palm-video-period.md).
+
+### Balcony curtain deformation
+
+The frozen menu export with `--palm-source` also writes four curtain sidecars (`menu.rido1` through `menu.rido4`) beside
+`menu.ojscene`. The viewer matches the 96 render corners to the 25 control
+points before enabling the cloth. It applies the local curtain field, 40 ordered
+distance links and, for rido1 and rido2, the instance collision plane at a fixed 60 Hz simulation step.
+Set `OPENJADE_CAPTURE_SECONDS` to a nonnegative time in seconds for repeatable poses.
+Four close-up Vulkan captures at 0, 0.5, 1 and 2 seconds kept all 13 marked
+points stationary while the free points moved up to 0.9613 scene units.
+At two seconds the maximum corner displacement was 0.9613 units for rido2 and 0.6372 for rido4. Enabling rido4 changed 1,647 pixels against the single-curtain capture at that time and zero pixels at rest. Agreement with the original balcony
+sequence, native frame timing and collisions with other scene objects remain open.
 
 ## Native camera analysis
 

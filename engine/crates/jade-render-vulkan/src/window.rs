@@ -60,6 +60,9 @@ pub struct Presenter {
     dirty: bool,
     panel: Option<Panel>,
     scene: Option<Scene>,
+    fixed_seconds: Option<f32>,
+    material_clock: std::time::Instant,
+    palm_frame: Option<std::time::Instant>,
     menu_frame: Option<([f32; 20], Option<u32>)>,
     gamma: Option<u8>,
     native_ui: Vec<f32>,
@@ -72,6 +75,13 @@ impl Presenter {
         validation: bool,
         scene: Option<Scene>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        let fixed_seconds = std::env::var("OPENJADE_CAPTURE_SECONDS")
+            .ok()
+            .map(|s| s.parse::<f32>())
+            .transpose()?;
+        if fixed_seconds.is_some_and(|t| !t.is_finite() || !(0.0..=86400.0).contains(&t)) {
+            return Err("Invalid OPENJADE_CAPTURE_SECONDS".into());
+        }
         // SAFETY: retained Arc keeps native handles alive. Each created handle is
         // immediately owned by Presenter and released in reverse dependency order.
         unsafe {
@@ -102,6 +112,9 @@ impl Presenter {
                 None,
             )?;
             let mut this = Self {
+                fixed_seconds,
+                material_clock: std::time::Instant::now(),
+                palm_frame: None,
                 debug_loader: ash::ext::debug_utils::Instance::new(&entry, &instance),
                 surface_loader: ash::khr::surface::Instance::new(&entry, &instance),
                 window,
@@ -401,12 +414,38 @@ impl Presenter {
             };
             d.reset_command_buffer(self.command, vk::CommandBufferResetFlags::empty())?;
             d.begin_command_buffer(self.command, &vk::CommandBufferBeginInfo::default())?;
+            let now = std::time::Instant::now();
+            let (palms, curtain) = self.scene.as_mut().map_or((&mut [][..], &mut [][..]), |s| {
+                (s.palms.as_mut_slice(), s.curtains.as_mut_slice())
+            });
+            let last = self.palm_frame.replace(now);
+            let step = match self.fixed_seconds {
+                Some(t) => last.is_none().then_some(t),
+                None => last.map(|at| (now - at).as_secs_f32().clamp(0.001, 0.1)),
+            };
+            if let Some(dt) = step {
+                for vertex in palms.iter_mut() {
+                    vertex.advance(dt);
+                }
+            }
+            if let Some(dt) = step {
+                for cloth in curtain.iter_mut() {
+                    cloth.advance(dt);
+                }
+            }
             self.panel.as_ref().unwrap().draw(
                 self.command,
                 index as usize,
                 self.menu_frame,
                 self.gamma,
                 &self.native_ui,
+                (
+                    self.fixed_seconds
+                        .map(f64::from)
+                        .unwrap_or_else(|| self.material_clock.elapsed().as_secs_f64()),
+                    palms,
+                    curtain,
+                ),
             )?;
             d.end_command_buffer(self.command)?;
             let wait = [self.acquired];

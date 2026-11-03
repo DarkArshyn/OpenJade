@@ -340,6 +340,11 @@ mod invalid_bundle_tests {
     #[test]
     fn malformed_bundle_does_not_mutate_scene() {
         let mut scene = Scene {
+            leaf: None,
+            trunk_mips: None,
+            curtains: Vec::new(),
+            palms: vec![],
+            uv_rates: vec![],
             texture_sizes: vec![[512, 512]],
             ui_start: 1,
             filter: Default::default(),

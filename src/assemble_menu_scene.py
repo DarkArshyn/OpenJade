@@ -11,6 +11,7 @@ from menu_colored_raster import raster
 from menu_fixture_materials import decode_fixture, SUPPORTED
 from menu_material_colors import color_state, apply_material_colors
 from menu_gpu_colors import direct_tree_colors
+from menu_sky_state import decode_sky, SKY_KEYS, SCALED_SKY_OBJECTS
 from menu_primary_geometry import primary_mesh, instance_colors
 from menu_fog_state import fog_state, transform_fog_points, fog_uv_motion, animate_fog_uv
 
@@ -89,6 +90,7 @@ def export(source,out, yaw=12.0, pitch=-1.0, fov=50.0, fog_time=0.0, tree_upload
                         images.append(Image.frombytes('RGBA',(128,64),data[56:56+128*64*4],'raw','BGRA'))
             if len(images)!=1:raise ValueError('Missing or ambiguous pixel payload '+texkey)
             return images[0]
+        sky_state=decode_sky(d,key) if key in SKY_KEYS else None
         slot=len(materials)
         texkey=stages[0]['texture'] if stages else f'0x{struct.unpack_from("<I",d,44)[0]:08X}'
         image=pixels(texkey)
@@ -101,7 +103,7 @@ def export(source,out, yaw=12.0, pitch=-1.0, fov=50.0, fog_time=0.0, tree_upload
         else:textures[slot]=np.asarray(image)
         materials[key]=slot;image.save(out/f'material-{slot}.png')
         material_reports.append(dict(slot=slot,key=key,texture=texkey,stages=stages,
-                                     color_state=color_state(d[:48])))
+                                     color_state=color_state(d[:48]),sky_state=sky_state))
         return slot
     for key,rs in by.items():
         if len(rs)!=1:continue
@@ -140,9 +142,9 @@ def export(source,out, yaw=12.0, pitch=-1.0, fov=50.0, fog_time=0.0, tree_upload
             if partial:
                 tri=np.concatenate(retained) if retained else np.empty((0,3),dtype=int)
             matrix=np.array(struct.unpack_from('<16f',d,link['matrix_offset'])).reshape(4,4)
-            if not np.isfinite(matrix[:,:3]).all() or (key not in {"0x30000D38", "0x30000CCE", "0x30000D53", "0x30000F45"} and not np.allclose(matrix[:3,3],0,atol=1e-6)):
+            if not np.isfinite(matrix[:,:3]).all() or (key not in ({"0x30000D38", "0x30000CCE", "0x30000D53", "0x30000F45"} | SCALED_SKY_OBJECTS) and not np.allclose(matrix[:3,3],0,atol=1e-6)):
                 raise ValueError('Unsupported affine matrix')
-            world=transform_fog_points(v[:,:3],matrix) if key in {"0x30000D38", "0x30000CCE", "0x30000D53", "0x30000F45"} else v[:,:3]@matrix[:3,:3]+matrix[3,:3]
+            world=transform_fog_points(v[:,:3],matrix) if key in ({"0x30000D38", "0x30000CCE", "0x30000D53", "0x30000F45"} | SCALED_SKY_OBJECTS) else v[:,:3]@matrix[:3,:3]+matrix[3,:3]
             is_fog=bool(fog_states) and len(fog_states)==len(mapped)
             if is_fog:
                 colors=np.tile(np.array(fog_states[0]["constant_rgb"])*2/255,(len(v),1))
@@ -155,8 +157,14 @@ def export(source,out, yaw=12.0, pitch=-1.0, fov=50.0, fog_time=0.0, tree_upload
                 colors=direct_tree_colors(colors,struct.unpack_from('<I',d,link['link_offset']+8)[0],color_states)
                 color_source='tronc4 loaded-state dynamic upload experiment: recorded RGB x2'
             if not is_fog and any(s["mode"]==2 for s in color_states):color_source="per-group constant x2 / existing vertex approximation"
-            objects.append(dict(previous_colors=previous_colors,blend=is_fog,fog_sampler=is_fog,name=link['name'],vertices=world,uv=v[:,3:],triangles=tri,groups=mapped,colors=colors))
-            accepted.append(dict(omitted_groups=omitted,color_groups=color_states,fog_states=fog_states,scale=matrix[:3,3].tolist() if key in {"0x30000D38", "0x30000CCE", "0x30000D53", "0x30000F45"} else None,key=key,name=link['name'],mesh=link['mesh'],header_offset=layout["vertex_offset"],color_source=color_source,color_offset=color_offset,layout=layout,vertices=len(v),triangles=len(tri),material_pack=link['material_pack']))
+            overrides={}
+            if key in SCALED_SKY_OBJECTS:
+                for slot,_ in mapped:
+                    state=material_reports[slot]['sky_state']
+                    if state is None:raise ValueError('Missing bounded sky state')
+                    overrides[slot]=dict(stages=[dict(state,image=textures[slot].astype(float))],time=fog_time)
+            objects.append(dict(texture_overrides=overrides,previous_colors=previous_colors,blend=is_fog or key == "0x30000D1D",fog_sampler=is_fog,name=link['name'],vertices=world,uv=v[:,3:],triangles=tri,groups=mapped,colors=colors))
+            accepted.append(dict(omitted_groups=omitted,color_groups=color_states,fog_states=fog_states,scale=matrix[:3,3].tolist() if key in ({"0x30000D38", "0x30000CCE", "0x30000D53", "0x30000F45"} | SCALED_SKY_OBJECTS) else None,key=key,name=link['name'],mesh=link['mesh'],header_offset=layout["vertex_offset"],color_source=color_source,color_offset=color_offset,layout=layout,vertices=len(v),triangles=len(tri),material_pack=link['material_pack']))
         except (ValueError,struct.error,IndexError) as error:
             excluded.append(dict(key=key,reason=str(error)))
     if not objects:raise ValueError('No supported objects')

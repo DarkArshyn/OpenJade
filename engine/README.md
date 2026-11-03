@@ -48,7 +48,7 @@ The toolchain is pinned to the tested Rust 1.99.1 release.
 See [current workflow and controls](../README-dev.md#native-menu-prototype).
 
 ```powershell
-cargo run -p jade-viewer -- --scene ../reports/engine-textures-20261028/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --validation
+cargo run -p jade-viewer -- --scene ../reports/menu-sky-moon-20261030/runtime-final/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --validation
 ```
 
 The UI and 3D scene share one render pass/window. UI is alpha blended after the
@@ -64,7 +64,7 @@ balcony pose. Escape resets it. No gameplay follows. Letterboxing preserves 4:3
 rendering and mouse coordinates. The smoke mode accelerates time to exercise the
 transition plus return in 80 frames; ordinary playback uses elapsed real time.
 
-## Decoded menu geometry (initial import, 2026-10-27)
+## Decoded menu geometry
 
 The local import tested on 2026-10-27 contains **40 objects / 14,994 triangles / 31
 texture layers**, taken from the existing research export. Camera02 uses its initial
@@ -95,9 +95,12 @@ capture live under ignored `reports/`; `*.ojscene` is also ignored globally.
 
 The initial version-1 import excluded three fog panels and three fixture objects.
 The newer `export_engine_materials.py` / OJSCN003 import includes all six, with
-source-over fog and two-pass fixtures; its `--time` selects a fixed material phase.
+source-over fog and two-pass fixtures. Its `--time` selects a fixed material phase
+by default; `--animate-uv` exports OJSCN004 and uses that phase as the initial
+state for runtime UV animation. Legacy packages remain fixed.
 Remaining limits:
-original mipmaps are not imported. OJSCN003 preserves native base dimensions;
+native mipmaps are imported for the verified plante2/tronc1 textures through
+`menu.leaf` / `menu.trunk`; other textures still use base images. OJSCN003 preserves native base dimensions;
 `--texture-filter nearest|linear|trilinear` compares ordinary nearest/base-level,
 linear/base-level (default), and generated trilinear mipmaps. Fog/fixture samplers
 remain linear; UI uses linear/base-level sampling. Colors are
@@ -129,17 +132,19 @@ Original assets remain outside source control. Tests of Windows do not establish
 Linux/macOS compatibility. No desktop settings or Vulkan layer registry entries
 are modified by the probe.
 
-## Texture validation (2026-10-28)
+## Texture validation
 
-The 38 scene textures use individual GPU images at their decoded dimensions.
+The 39 scene textures use individual GPU images at their decoded dimensions.
 The interchange's padding is never uploaded as texture content. Mipmap generation
 checks sRGB format blit/filter support and fails explicitly if unavailable.
-Generated chains are diagnostic; alpha coverage and original mip data are not
-recovered. GPU resources are still rebuilt on swapchain resize, including each
+Generated chains remain diagnostic for textures without native sidecars. The
+verified leaf uses five native levels and the trunk six; regenerate older leaf
+packages to obtain the corrected no-depth-write flags. See the
+[aligned GOG comparison](../docs/observations/2026-11-03-native-mips-aligned.md). GPU resources are still rebuilt on swapchain resize, including each
 texture upload; this prototype path is not optimized yet.
 
 ```powershell
-cargo run -p jade-viewer -- --scene ../reports/engine-textures-20261028/menu.ojscene --menu ../reports/engine-ui-20261028/menu.ojui --texture-filter trilinear --validation
+cargo run -p jade-viewer -- --scene ../reports/menu-sky-moon-20261030/runtime-final/menu.ojscene --menu ../reports/engine-ui-20261028/menu.ojui --texture-filter trilinear --validation
 ```
 
 All three settings passed 80-frame resize/Camera02 smoke tests with zero Vulkan
@@ -173,7 +178,7 @@ the ramp after scene and UI blending in display-value space, preserving alpha.
 See [launch commands](../README-dev.md#live-gamma-control-from-the-python-menus)
 and [native calculation](../docs/observations/2026-10-28-gamma-bridge.md).
 
-## Interface scaling (2026-10-29)
+## Interface scaling
 
 The current OJUI0003 bundle preserves the 1024x256 logo and 128x128 cursor pixels,
 and includes twelve MFT variants. Rust selects a font based on actual letterboxed
@@ -182,3 +187,25 @@ filtering remains separate. The 800x600 layout and sprite display sizes are reta
 Use the new bundle path above; old OJUI0001/2 bundles do not contain these resources.
 Their loaders remain supported. See [export commands](../README-dev.md#native-menu-prototype)
 and [evidence/limits](../docs/observations/2026-10-29-ui-scaling.md).
+
+## Camera-relative transparency
+
+The viewer re-sorts transparent scene passes each frame using the active camera.
+Opaque passes remain first; tied transparent stages preserve their order.
+This applies during Camera02 and reset without regenerating the asset bundle.
+Centroid sorting remains approximate for intersecting surfaces. See the
+[validation report](../docs/observations/2026-10-30-camera-transparency.md).
+
+### Animated scene materials and palms
+
+From `engine/`, with the latest local export:
+
+```powershell
+cargo run -p jade-viewer -- --scene ../reports/palm-runtime-20261101/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --color-pipeline legacy-unorm --validation
+```
+
+OJSCN005 adds seven animated palms using their local vertex axes.
+Seven passes carry dynamic UV rates; lampion, sky and moon offsets stay static.
+The material clock survives resize/filter rebuilds and Camera02 reset. This is
+texture animation, not particles or dynamic scene lighting. See the
+[evidence and limitations](../docs/observations/2026-10-30-material-animation.md).

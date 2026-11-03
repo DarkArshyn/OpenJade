@@ -46,7 +46,7 @@ def composite_fixture(destination, uv, lighting, descriptor):
     result=np.asarray(destination,dtype=float).copy()
     for stage in descriptor['stages']:
         sample=sample_stage(stage['image'],uv,stage,descriptor['time'])
-        source=np.clip(sample[...,:3]*lighting*2,0,255)
+        source=np.clip(sample[...,:3]*lighting*stage.get("rgb_gain",2.),0,255)
         alpha=sample[...,3,None]/255*stage['alpha']
         if stage['blend']==0:result=source
         elif stage['blend']==1:result=source*alpha+result*(1-alpha)

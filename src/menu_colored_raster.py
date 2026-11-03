@@ -28,7 +28,7 @@ def raster(objects,textures,position,basis,fov,flip=False,blend_enabled=True):
         view=np.column_stack((-local[:,0],local[:,2],-local[:,1],obj['uv'],obj['colors']))
         cursor=0
         for slot,count in obj['groups']:
-            material=textures[slot]
+            material=obj.get('texture_overrides',{}).get(slot,textures[slot])
             passes=[dict(material,stages=[stage]) for stage in material['stages']] if isinstance(material,dict) else [material]
             for pass_index,tex in enumerate(passes):
                 for tri in obj['triangles'][cursor:cursor+count]:

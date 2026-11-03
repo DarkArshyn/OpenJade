@@ -22,6 +22,7 @@ impl Texture {
         array: bool,
         mips: bool,
         srgb: bool,
+        native_levels: u32,
     ) -> Result<Self, vk::Result> {
         let mut t = Self {
             device: d.clone(),
@@ -37,7 +38,9 @@ impl Texture {
             vk::Format::R8G8B8A8_UNORM
         };
         let layers = 1;
-        let levels = if mips {
+        let levels = if native_levels > 0 {
+            native_levels
+        } else if mips {
             32 - width.max(height).leading_zeros()
         } else {
             1
@@ -150,26 +153,38 @@ impl Texture {
             &[],
             &[barrier],
         );
+        let mut regions = Vec::new();
+        let mut offset = 0;
+        for level in 0..native_levels.max(1) {
+            let w = (width >> level).max(1);
+            let h = (height >> level).max(1);
+            regions.push(
+                vk::BufferImageCopy::default()
+                    .buffer_offset(offset)
+                    .image_subresource(
+                        vk::ImageSubresourceLayers::default()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .mip_level(level)
+                            .layer_count(1),
+                    )
+                    .image_extent(vk::Extent3D {
+                        width: w,
+                        height: h,
+                        depth: 1,
+                    }),
+            );
+            offset += u64::from(w) * u64::from(h) * 4;
+        }
         d.cmd_copy_buffer_to_image(
             command,
             t.staging,
             t.image,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            &[vk::BufferImageCopy::default()
-                .image_subresource(
-                    vk::ImageSubresourceLayers::default()
-                        .aspect_mask(vk::ImageAspectFlags::COLOR)
-                        .layer_count(layers),
-                )
-                .image_extent(vk::Extent3D {
-                    width,
-                    height,
-                    depth: 1,
-                })],
+            &regions,
         );
         let mut w = width as i32;
         let mut h = height as i32;
-        for level in 1..levels {
+        for level in native_levels.max(1)..levels {
             let previous = range.base_mip_level(level - 1).level_count(1);
             d.cmd_pipeline_barrier(
                 command,
@@ -242,7 +257,11 @@ impl Texture {
             &[],
             &[],
             &[barrier
-                .subresource_range(range.base_mip_level(levels - 1).level_count(1))
+                .subresource_range(if native_levels > 0 {
+                    range
+                } else {
+                    range.base_mip_level(levels - 1).level_count(1)
+                })
                 .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)

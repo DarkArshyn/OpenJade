@@ -10,6 +10,8 @@ pub struct Draw {
     pub count: u32,
     /// 0 = opaque, 1 = source-over, 6 = source-alpha additive.
     pub blend: u32,
+    /// 0 disables fog, 1 uses the normal GOG range, 2 inverts it.
+    pub vertex_fog: u32,
     /// UV scale/offset, alpha, RGB gain, alpha cutoff, sampler (0/1/2).
     pub parameters: [f32; 8],
 }
@@ -26,7 +28,15 @@ pub enum ColorPipeline {
     Srgb,
     LegacyUnorm,
 }
+pub mod curtain_field;
+pub mod native_mips;
+pub mod palms;
+pub mod rido2;
 pub struct Scene {
+    pub trunk_mips: Option<native_mips::TrunkMips>,
+    pub leaf: Option<(usize, usize, Vec<u8>)>,
+    pub curtains: Vec<rido2::Curtain>,
+    pub palms: Vec<palms::PalmVertex>,
     /// Diagnostic choice, not a recovered original runtime state.
     pub color_pipeline: ColorPipeline,
     /// Actual base-level dimensions inside each transport slot.
@@ -43,6 +53,8 @@ pub struct Scene {
     /// Position, right, up, forward (three floats each), vertical FOV in degrees.
     pub camera: [f32; 13],
     pub draws: Vec<Draw>,
+    /// Per-pass UV cycles per second; zero for legacy packages.
+    pub uv_rates: Vec<[f32; 2]>,
 }
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
@@ -55,17 +67,87 @@ impl Scene {
         }
         let mut bytes = Vec::new();
         file.take(256 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
-        Self::decode(&bytes)
+        let mut scene = Self::decode(&bytes)?;
+        for extension in ["rido1", "rido2", "rido3", "rido4"] {
+            match std::fs::File::open(path.with_extension(extension)) {
+                Ok(file) => {
+                    let mut control = Vec::new();
+                    file.take(1393).read_to_end(&mut control)?;
+                    scene
+                        .curtains
+                        .push(rido2::Curtain::decode(&control, &scene.vertices)?);
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e),
+            }
+        }
+        if let Some(draw) = scene.draws.iter().find(|d| d.blend == 7) {
+            let mut leaf = Vec::new();
+            std::fs::File::open(path.with_extension("leaf"))?
+                .take(11113)
+                .read_to_end(&mut leaf)?;
+            let first = draw.first as usize;
+            let layer = scene.vertices[first * 9 + 8] as usize;
+            if leaf.len() != 11112
+                || &leaf[..8] != b"OJLEAF01"
+                || leaf[8..12] != draw.first.to_le_bytes()
+                || leaf[12..16] != (layer as u32).to_le_bytes()
+                || draw.count != 216
+                || scene.texture_sizes[layer] != [128, 64]
+                || scene.vertices[first * 9..(first + 216) * 9]
+                    .as_chunks::<9>()
+                    .0
+                    .iter()
+                    .any(|v| v[8] as usize != layer)
+                || scene.draws.iter().filter(|d| d.blend == 7).count() != 1
+            {
+                return Err(invalid("Invalid leaf sidecar"));
+            }
+            scene.leaf = Some((first, layer, leaf.split_off(16)));
+        }
+        match std::fs::File::open(path.with_extension("trunk")) {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                file.take(349457).read_to_end(&mut bytes)?;
+                let mip = native_mips::TrunkMips::decode(&bytes, &scene.texture_sizes)?;
+                if mip.rgba[..262144] != scene.texture_pixels(mip.layer) {
+                    return Err(invalid("Trunk base mip differs from scene texture"));
+                }
+                scene.trunk_mips = Some(mip);
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        Ok(scene)
     }
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
+        let mut palm_bytes = &[][..];
+        let bytes = if bytes.starts_with(b"OJSCN005") {
+            if !(80..=256 * 1024 * 1024).contains(&bytes.len()) {
+                return Err(invalid("Invalid palm scene extent"));
+            }
+            let end = bytes.len() - 4;
+            let count = u32::from_le_bytes(bytes[end..].try_into().unwrap()) as usize;
+            if count == 0 || count > 1_000_000 || end < 76 + count * 44 {
+                return Err(invalid("Invalid palm count"));
+            }
+            let start = end - count * 44;
+            palm_bytes = &bytes[start..end];
+            &bytes[..start]
+        } else {
+            bytes
+        };
         if bytes.len() < 76
             || (&bytes[..8] != b"OJSCN001"
                 && &bytes[..8] != b"OJSCN002"
-                && &bytes[..8] != b"OJSCN003")
+                && &bytes[..8] != b"OJSCN003"
+                && &bytes[..8] != b"OJSCN004"
+                && &bytes[..8] != b"OJSCN005")
         {
             return Err(invalid("Invalid scene header/version"));
         }
-        let version3 = &bytes[..8] == b"OJSCN003";
+        let version4 = &bytes[..8] == b"OJSCN004" || &bytes[..8] == b"OJSCN005";
+        let version3 = version4 || &bytes[..8] == b"OJSCN003";
         let version2 = version3 || &bytes[..8] == b"OJSCN002";
 
         let word = |offset| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
@@ -135,6 +217,7 @@ impl Scene {
         }
         let mut texture_sizes = vec![[width, height]; layers as usize];
         let mut draws = Vec::new();
+        let mut uv_rates = Vec::new();
         if version2 {
             let end = expected as usize;
             if bytes.len() < end + 4 {
@@ -143,7 +226,11 @@ impl Scene {
             let count = word(end) as usize;
             if count == 0
                 || count > 100_000
-                || end + 4 + count * 48 + if version3 { layers as usize * 8 } else { 0 }
+                || end
+                    + 4
+                    + count * 48
+                    + if version3 { layers as usize * 8 } else { 0 }
+                    + if version4 { count * 8 } else { 0 }
                     != bytes.len()
             {
                 return Err(invalid("Invalid draw table extent"));
@@ -155,6 +242,16 @@ impl Scene {
                     if size[0] == 0 || size[1] == 0 || size[0] > width || size[1] > height {
                         return Err(invalid("Invalid native texture dimensions"));
                     }
+                }
+            }
+            if version4 {
+                let start = end + 4 + count * 48 + layers as usize * 8;
+                for pair in bytes[start..].as_chunks::<8>().0 {
+                    let rate: [f32; 2] = floats(pair).try_into().unwrap();
+                    if rate.iter().any(|r| !r.is_finite() || r.abs() > 1024.) {
+                        return Err(invalid("Invalid UV rate"));
+                    }
+                    uv_rates.push(rate);
                 }
             }
             let mut cursor = 0u32;
@@ -169,7 +266,10 @@ impl Scene {
                     || first
                         .checked_add(count)
                         .is_none_or(|end| end > vertices.len() as u32 / 9)
-                    || !matches!((blend, write), (0, 1) | (1, 0) | (6, 0))
+                    || !matches!(
+                        (blend, write),
+                        (0, 1 | 3 | 5) | (7, 0 | 2 | 4) | (1, 0) | (6, 0)
+                    )
                     || !parameters.iter().all(|f| f.is_finite())
                     || !(0.0..=1.0).contains(&parameters[4])
                     || !(0.0..=2.0).contains(&parameters[5])
@@ -183,6 +283,7 @@ impl Scene {
                     first,
                     count,
                     blend,
+                    vertex_fog: write >> 1,
                     parameters,
                 });
             }
@@ -194,10 +295,19 @@ impl Scene {
                 first: 0,
                 count,
                 blend: 0,
+                vertex_fog: 0,
                 parameters: [1., 1., 0., 0., 1., 1., 0.5, 0.],
             });
         }
+        if !version4 {
+            uv_rates = vec![[0.; 2]; draws.len()];
+        }
         Ok(Self {
+            leaf: None,
+            trunk_mips: None,
+            curtains: Vec::new(),
+            palms: palms::decode(palm_bytes, &vertices)?,
+            uv_rates,
             texture_sizes,
             ui_start: layers,
             filter: TextureFilter::default(),
@@ -331,6 +441,56 @@ mod material_tests {
         b
     }
     #[test]
+    fn palm_trailer_rejects_invalid_vertex_and_count() {
+        let mut b = package();
+        b[..8].copy_from_slice(b"OJSCN005");
+        b.extend(1u32.to_le_bytes());
+        b.extend(1u32.to_le_bytes());
+        b.extend([0u8; 8]);
+        let record = b.len();
+        b.extend([0u8; 44]);
+        b.extend(1u32.to_le_bytes());
+        assert_eq!(Scene::decode(&b).unwrap().palms.len(), 1);
+        b[record..record + 4].copy_from_slice(&3u32.to_le_bytes());
+        assert!(Scene::decode(&b).is_err());
+        b.truncate(record + 43);
+        assert!(Scene::decode(&b).is_err());
+    }
+    #[test]
+    fn validates_v4_motion_and_keeps_legacy_static() {
+        let mut b = package();
+        assert_eq!(Scene::decode(&b).unwrap().uv_rates, [[0.; 2]]);
+        b[..8].copy_from_slice(b"OJSCN004");
+        b.extend(1u32.to_le_bytes());
+        b.extend(1u32.to_le_bytes());
+        b.extend(0.125f32.to_le_bytes());
+        b.extend((-0.25f32).to_le_bytes());
+        assert_eq!(Scene::decode(&b).unwrap().uv_rates, [[0.125, -0.25]]);
+        assert!(Scene::decode(&b[..b.len() - 1]).is_err());
+        let mut trailing = b.clone();
+        trailing.push(0);
+        assert!(Scene::decode(&trailing).is_err());
+        let n = b.len();
+        for rate in [f32::NAN, f32::INFINITY, 1025.] {
+            b[n - 4..].copy_from_slice(&rate.to_le_bytes());
+            assert!(Scene::decode(&b).is_err());
+        }
+    }
+    #[test]
+    fn leaf_depth_is_tested_without_writes() {
+        let mut b = package();
+        let start = 76 + 3 * 36 + 4 + 4;
+        b[start + 8..start + 12].copy_from_slice(&7u32.to_le_bytes());
+        for flags in [0u32, 2, 4] {
+            b[start + 12..start + 16].copy_from_slice(&flags.to_le_bytes());
+            assert_eq!(Scene::decode(&b).unwrap().draws[0].vertex_fog, flags >> 1);
+        }
+        for flags in [1u32, 3, 5] {
+            b[start + 12..start + 16].copy_from_slice(&flags.to_le_bytes());
+            assert!(Scene::decode(&b).is_err());
+        }
+    }
+    #[test]
     fn reads_transparent_draw() {
         let s = Scene::decode(&package()).unwrap();
         assert_eq!(s.draws[0].blend, 1);
@@ -369,6 +529,11 @@ mod native_texture_tests {
             layers: 1,
             pixels: (0u8..24).collect(),
             camera: [0.; 13],
+            leaf: None,
+            trunk_mips: None,
+            curtains: Vec::new(),
+            palms: vec![],
+            uv_rates: vec![],
             draws: vec![],
             texture_sizes: vec![[2, 2]],
             ui_start: 1,

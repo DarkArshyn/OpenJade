@@ -26,7 +26,7 @@ class MaterialExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);source=root/'in';source.mkdir()
             fog=dict(flags='0x40014205',motion=dict(rate_u=.125))
-            stage=dict(flags=0xC0066207,blend=6,depth_write=False,scale=[1.,1.],rate=[0.,0.],alpha=1.)
+            stage=dict(flags=0xC0066207,blend=6,depth_write=False,scale=[1.,1.],rate=[.25,-.125],alpha=1.)
             objects=[];materials=[];lines=[]
             for i,(name,states,stages,mode) in enumerate([('fog',[fog],None,2),('wall',[],None,2),('fire',[],[stage,stage],3)]):
                 key=f'm{i}'
@@ -55,5 +55,14 @@ class MaterialExportTests(unittest.TestCase):
             self.assertEqual(struct.unpack_from('<8I',blob,len(blob)-32),(2,1)*4)
             self.assertAlmostEqual(struct.unpack_from('<f',blob,76+20)[0],128/255)
             self.assertEqual(manifest['geometry_triangles'],3);self.assertEqual(manifest['submitted_triangles'],4)
+            convert(source,camera,root/'animated',3.,animate_uv=True)
+            animated=(root/'animated/menu.ojscene').read_bytes()
+            self.assertEqual(animated[:8],b'OJSCN004')
+            self.assertEqual(animated[8:-32],blob[8:])
+            self.assertEqual(struct.unpack('<8f',animated[-32:]),(0.,0.,.25,-.125,.25,-.125,.125,0.))
+            info=json.loads((root/'animated/manifest.json').read_text())
+            self.assertTrue(info['animate_uv'])
+            self.assertEqual(info['draws'][-1]['uv_rate'],[.125,0.])
+
 
 if __name__=='__main__':unittest.main()

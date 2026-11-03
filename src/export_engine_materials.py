@@ -1,4 +1,4 @@
-"""Export verified fog/fixture passes from existing research exports to OJSCN003.
+"""Export verified fog/fixture passes from existing research exports to OJSCN003/004.
 
 Effective time is a chosen sample, not a captured original-game animation phase.
 Original inputs are read only. Lighting selectors 0/3 remain explicitly diagnostic.
@@ -26,12 +26,30 @@ def pass_parameters(stage, time):
 BALCONY = 'Menu3D_FarahRoom_Balcony.gao'
 
 
+# Opaque draws matched by native index signature in the fixed GOG menu.
+TRUNK_FOG_MATERIALS = {'0x30000C95', '0x30000CA9'}
+MENU_FOG_MATERIALS = {
+    '0x30000CBA': {'0x30000CB0', '0x30000CB1'},
+    '0x30000CBC': TRUNK_FOG_MATERIALS,
+    '0x30000CBF': TRUNK_FOG_MATERIALS,
+    '0x30000CC8': TRUNK_FOG_MATERIALS,
+    '0x30000CCA': TRUNK_FOG_MATERIALS,
+    '0x30000CD0': TRUNK_FOG_MATERIALS,
+    '0x30000CD6': TRUNK_FOG_MATERIALS,
+    '0x30000CD9': {'0x30000C93', '0x30000C94', '0x30000C9A', '0x30000C9B', '0x30000C9D', '0x30000C9F', '0x30000CA0', '0x30000CA1', '0x30000CA2', '0x30000CA3', '0x30000CA4', '0x30000CA5', '0x30000CAD', '0x30000CAE', '0x30000D43', '0x3000FCCD'},
+    '0x30000CDB': TRUNK_FOG_MATERIALS,
+    '0x30000CDD': TRUNK_FOG_MATERIALS,
+}
+
+
 def balcony_gain(name, mode, stages, enabled):
     """Isolate the unverified direct-color MODULATE2X hypothesis."""
     return 2. if enabled and name == BALCONY and mode == 0 and not stages else 1.
 
 
-def convert(source, camera, output, time=0., balcony_modulate2x=False):
+def convert(source, camera, output, time=0., balcony_modulate2x=False, animate_uv=False, palm_source=None, masonry_fog="normal"):
+    fog_flags = {"off": 0, "normal": 2, "inverted": 4}[masonry_fog]
+    animate_uv = animate_uv or palm_source is not None
     if not math.isfinite(time) or time < 0: raise ValueError('Invalid effective time')
     if output.exists(): raise FileExistsError(output)
     report = json.loads((source/'scene.json').read_text(encoding='utf-8'))
@@ -90,6 +108,19 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False):
         color_groups=[x for x in row['color_groups'] if x['material']==material['key']]
         if len(color_groups)!=1: raise ValueError('Ambiguous material color state')
         color=color_groups[0]
+        verified_masonry = (row.get('key') == '0x30000CD9' and g['name'] == BALCONY
+                            and material['key'] == '0x30000CA0' and color['mode'] == 0
+                            and not material['stages'] and not row['fog_states'])
+        verified_fog = (report['source_sha256'] == '96244fe330c11acdf2a87a7c8a410225b224f5f1b9f264834425848cbf4d00eb'
+                        and material['key'] in MENU_FOG_MATERIALS.get(row.get('key'), ()))
+        verified_leaf = (report['source_sha256'] == '96244fe330c11acdf2a87a7c8a410225b224f5f1b9f264834425848cbf4d00eb'
+                         and row.get('key') == '0x30000CCF' and material['key'] == '0x30000CB0'
+                         and color['mode'] == 0 and not material['stages'])
+        verified_trunk = (report['source_sha256'] == '96244fe330c11acdf2a87a7c8a410225b224f5f1b9f264834425848cbf4d00eb'
+                          and row.get('key') == '0x30000CBF' and material['key'] == '0x30000C95'
+                          and color['mode'] == 0 and not material['stages'])
+        verified_fog = verified_fog or verified_leaf
+        rates=[]
         if row['fog_states']:
             if len(row['fog_states'])!=1: raise ValueError('Ambiguous fog state')
             state=row['fog_states'][0]
@@ -97,14 +128,23 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False):
             # OBJ UVs already include the export's sampled fog motion.
             motion=state['motion'];du=motion['rate_u']*(time-report['fog_time'])
             passes=[(f'material-{slot}.png',1,[1.,1.,du%1,0.,1.,1.,0.,2.])]
+            rates=[[motion['rate_u'],0.]]
+        elif material.get('sky_state') and g['name'] in ('Menu3D_sky.gao','2100_ciel_nuit_lune.gao'):
+            state=material['sky_state']
+            expected=0x00014607 if material['key']=='0x30000D1B' else 0x00006007
+            if material['key'] not in ('0x30000D1B','0x30000CAC') or state['flags']!=expected:
+                raise ValueError('Unsupported sky state')
+            passes=[(f'material-{slot}.png',state['blend'],[1.,1.,0.,0.,state['alpha'],state['rgb_gain'],0.,1.])]
         elif material['stages']:
             passes=[]
             for i,stage in enumerate(material['stages']):
+                rates.append([r if stage['flags'] & bit else 0. for r,bit in zip(stage['rate'],(0x40000000,0x80000000))])
                 mode,params=pass_parameters(stage,time)
                 passes.append((f'material-{slot}-stage-{i}.png',mode,params))
         else:
-            passes=[(f'material-{slot}.png',0,[1.,1.,0.,0.,1.,balcony_gain(g['name'],color['mode'],material['stages'],balcony_modulate2x),.5,0.])]
-        for image,mode,params in passes:
+            passes=[(f'material-{slot}.png',0,[1.,1.,0.,0.,1.,2. if verified_leaf or verified_trunk else balcony_gain(g['name'],color['mode'],material['stages'],balcony_modulate2x or verified_masonry),.5,0.])]
+        if not rates: rates=[[0.,0.] for _ in passes]
+        for (image,mode,params),rate in zip(passes,rates):
             if image not in image_names: image_names.append(image)
             layer=image_names.index(image);first=len(expanded)
             for vertex in g['vertices']:
@@ -113,9 +153,28 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False):
                     # Reconstruct the verified constant explicitly, avoiding a second x2.
                     vertex[5:8]=[c*2/255 for c in color['constant_rgb']]
                 expanded.append([*vertex,float(layer)])
-            draws.append((first,len(g['vertices']),mode,0 if mode else 1,params))
-            audit.append(dict(object=g['name'],material=material['key'],texture=image,blend=mode,depth_write=mode==0,
-                              parameters=params,color_mode=color['mode'],color_status='verified constant x2' if color['mode']==2 else ('balcony direct-color x2 hypothesis; runtime path unverified' if balcony_gain(g['name'],color['mode'],material['stages'],balcony_modulate2x)==2 else 'exported vertex colors; active runtime lighting unresolved')))
+            leaf_alpha = verified_leaf and palm_source is not None
+            if leaf_alpha:
+                params[6:8] = [150 / 255, 1.]
+            if verified_trunk and palm_source is not None:
+                params[7] = 1.
+            flags = (0 if mode or leaf_alpha else 1) | (fog_flags if verified_fog and mode == 0 else 0)
+            draws.append((first,len(g['vertices']),7 if leaf_alpha else mode,flags,params))
+            audit.append(dict(object=g['name'],material=material['key'],texture=image,blend=7 if leaf_alpha else mode,depth_write=mode==0 and not leaf_alpha,vertex_fog=masonry_fog if verified_fog and mode == 0 else 'off',
+                              uv_rate=rate if animate_uv else [0.,0.],parameters=params,color_mode=color['mode'],color_status='GOG D3D9 texture x diffuse x2' if verified_masonry or verified_leaf or verified_trunk else 'verified constant x2' if color['mode']==2 else ('balcony direct-color x2 hypothesis; runtime path unverified' if balcony_gain(g['name'],color['mode'],material['stages'],balcony_modulate2x)==2 else 'exported vertex colors; active runtime lighting unresolved')))
+    # Opaque passes establish depth first. Sort transparent passes back to front;
+    # stable ordering keeps the stages of a single fixture in their original order.
+    def draw_distance(draw):
+        first,count=draw[:2]
+        center=[sum(v[i] for v in expanded[first:first+count])/count for i in range(3)]
+        return sum((center[i]-eye[i])*forward[i] for i in range(3))
+    order=sorted(range(len(draws)),key=lambda i:(0 if draws[i][2] == 0 else 1 if draws[i][2] == 7 else 2,-draw_distance(draws[i]) if draws[i][2] not in (0,7) else 0))
+    reordered=[];sorted_draws=[]
+    for i in order:
+        first,count,blend,write,params=draws[i]
+        sorted_draws.append((len(reordered),count,blend,write,params))
+        reordered.extend(expanded[first:first+count])
+    expanded=reordered;draws=sorted_draws;audit=[audit[i] for i in order]
     size=512;pixels=bytearray();textures=[]
     for name in image_names:
         path=source/name
@@ -129,22 +188,48 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False):
         textures.append(dict(file=name,original_size=original,sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
     values=camera_values+[f for v in expanded for f in v]+[f for d in draws for f in d[4]]
     if not all(math.isfinite(x) for x in values): raise ValueError('Non-finite export')
-    blob=bytearray(b'OJSCN003');blob.extend(struct.pack('<4I13f',len(expanded),size,size,len(image_names),*camera_values))
+    blob=bytearray(b'OJSCN004' if animate_uv else b'OJSCN003');blob.extend(struct.pack('<4I13f',len(expanded),size,size,len(image_names),*camera_values))
     for v in expanded: blob.extend(struct.pack('<9f',*v))
     blob.extend(pixels);blob.extend(struct.pack('<I',len(draws)))
     for first,count,mode,write,params in draws: blob.extend(struct.pack('<4I8f',first,count,mode,write,*params))
     for texture in textures: blob.extend(struct.pack('<2I',*texture['original_size']))
+    if animate_uv:
+        for row in audit:
+            if not all(math.isfinite(r) and abs(r)<=1024 for r in row['uv_rate']): raise ValueError('Invalid UV rate')
+            blob.extend(struct.pack('<2f',*row['uv_rate']))
+    palm_counts = {}
+    if palm_source is not None:
+        from export_palm_controls import append_palms
+        palm_counts = append_palms(blob, palm_source, expanded, draws, audit)
+        blob[:8] = b'OJSCN005'
     if len(blob)>256*1024*1024: raise ValueError('Package too large')
     output.mkdir(parents=True,exist_ok=False)
+    if palm_source is not None:
+        from export_rido2 import export_rido2
+        for draw, entry in zip(draws, audit):
+            if draw[2] == 7:
+                from export_leaf import export_leaf
+                (output/'menu.leaf').write_bytes(export_leaf(palm_source, expanded, draw))
+
+        for draw, entry in zip(draws, audit):
+            if entry['material'] == '0x30000C95' and draw[4][7] == 1.:
+                from export_leaf import export_trunk
+                layer = int(expanded[draw[0]][8])
+                with Image.open(source / image_names[layer]) as image:
+                    base = image.convert('RGBA').tobytes()
+                (output/'menu.trunk').write_bytes(export_trunk(palm_source, layer, base))
+        for instance in (1, 2, 3, 4):
+            control = export_rido2(palm_source, expanded, draws, audit, instance=instance)
+            (output/f'menu.rido{instance}').write_bytes(control)
     (output/'menu.ojscene').write_bytes(blob)
-    manifest=dict(version=3,source_sha256=report['source_sha256'],source_obj_sha256=hashlib.sha256((source/'scene.obj').read_bytes()).hexdigest(),
+    manifest=dict(palm_vertices=palm_counts,version=5 if palm_source is not None else 4 if animate_uv else 3,animate_uv=animate_uv,source_sha256=report['source_sha256'],source_obj_sha256=hashlib.sha256((source/'scene.obj').read_bytes()).hexdigest(),
         source_report_sha256=hashlib.sha256((source/'scene.json').read_bytes()).hexdigest(),camera_sha256=hashlib.sha256(camera.read_bytes()).hexdigest(),
         balcony_modulate2x_diagnostic=balcony_modulate2x,package_sha256=hashlib.sha256(blob).hexdigest(),object_count=len(counts),objects=counts,geometry_triangles=sum(counts.values()),
         submitted_triangles=len(expanded)//3,texture_layers=len(image_names),textures=textures,draws=audit,effective_time=time,
-        limitations=['Time is an explicit sample with chosen phase zero; no wall-clock animation',
-                    'Fog sorted by object center; native global sorting unresolved',
+        limitations=['Initial phase is chosen, not captured; OJSCN004 advances dynamic UV rates with runtime elapsed seconds' if animate_uv else 'Fixed exported phase; no wall-clock animation',
+                    'Runtime sorts transparent group centers per camera pose; native sorting and intersecting triangles remain unresolved',
                     'Mode 0/3 colors and sRGB/linear behavior remain diagnostic; faithful scene lighting is not established',
-                    'Native base-level dimensions and pixels preserved in padded transport slots; original mipmaps absent from PNG inputs; runtime mipmaps are generated diagnostics',
+                    'Native base-level dimensions and pixels preserved in padded transport slots; native leaf/trunk mip chains supplied by sidecars when a frozen source is provided; other runtime mipmaps are generated diagnostics',
                     'No fire particles or actual light emission from the fixtures'])
     (output/'manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     print(f"{len(counts)} objects; {sum(counts.values())} geometry triangles; {len(expanded)//3} submitted triangles; {len(draws)} passes; {len(image_names)} textures")
@@ -154,4 +239,7 @@ if __name__=='__main__':
     p.add_argument('source',type=Path);p.add_argument('camera',type=Path);p.add_argument('output',type=Path)
     p.add_argument('--time',type=float,default=0.,help='Effective animation time in seconds (fixed sample)')
     p.add_argument('--balcony-modulate2x',action='store_true',help='Diagnostic only: double mode-0 balcony modulation; not a verified lighting fix')
-    a=p.parse_args();convert(a.source,a.camera,a.output,a.time,a.balcony_modulate2x)
+    p.add_argument('--animate-uv',action='store_true',help='Export OJSCN004 dynamic UV rates; --time is the initial phase')
+    p.add_argument('--palm-source',type=Path,help='Frozen decoded menu for OJSCN005 vertex deformation')
+    p.add_argument('--masonry-fog', choices=['off','normal','inverted'], default='normal', help='Measured GOG balcony vertex fog; normal corresponds to InvertFogRange=0')
+    a=p.parse_args();convert(a.source,a.camera,a.output,a.time,a.balcony_modulate2x,a.animate_uv,a.palm_source,a.masonry_fog)

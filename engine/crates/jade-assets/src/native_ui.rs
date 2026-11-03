@@ -1505,6 +1505,11 @@ mod tests {
     fn fixture() -> (Vec<u8>, Scene) {
         let camera = [0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1., 59.37908];
         let scene = Scene {
+            leaf: None,
+            trunk_mips: None,
+            curtains: Vec::new(),
+            palms: vec![],
+            uv_rates: vec![],
             color_pipeline: ColorPipeline::Srgb,
             texture_sizes: vec![[512, 512]],
             ui_start: 1,

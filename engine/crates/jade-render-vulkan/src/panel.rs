@@ -1,4 +1,9 @@
 //! Diagnostic textured quad. All resources are owned even on partial initialization.
+#[path = "draw_order.rs"]
+mod draw_order;
+#[path = "uv_motion.rs"]
+mod uv_motion;
+use draw_order::DrawOrder;
 #[path = "gamma.rs"]
 mod gamma;
 #[path = "texture.rs"]
@@ -28,6 +33,8 @@ pub(super) struct Panel {
     blended: Vec<vk::Pipeline>,
     extra_samplers: Vec<vk::Sampler>,
     draws: Vec<Draw>,
+    uv_rates: Vec<[f32; 2]>,
+    draw_order: DrawOrder,
     shaders: Vec<vk::ShaderModule>,
     extent: vk::Extent2D,
     vertex_buffer: vk::Buffer,
@@ -81,7 +88,12 @@ impl Panel {
             ui_pipeline: vk::Pipeline::null(),
             blended: vec![],
             extra_samplers: vec![],
+            uv_rates: scene.map_or_else(Vec::new, |s| s.uv_rates.clone()),
             draws: scene.map_or_else(Vec::new, |s| s.draws.clone()),
+            draw_order: scene.map_or_else(
+                || DrawOrder::new(&[], &[]),
+                |s| DrawOrder::new(&s.vertices, &s.draws),
+            ),
             shaders: vec![],
             extent,
             vertex_buffer: vk::Buffer::null(),
@@ -115,14 +127,20 @@ impl Panel {
             return Err(vk::Result::ERROR_FORMAT_NOT_SUPPORTED);
         }
         if let Some(scene) = scene {
-            let bytes: Vec<u8> = scene
+            let mut bytes: Vec<u8> = scene
                 .vertices
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
                 .collect();
+            let alpha_offset = bytes.len() + 65536 * 36;
+            bytes.resize(alpha_offset + scene.vertices.len() / 9 + 65536, 255);
+            if let Some((first, _, data)) = &scene.leaf {
+                bytes[alpha_offset + first..alpha_offset + first + 216]
+                    .copy_from_slice(&data[..216]);
+            }
             p.vertex_buffer = d.create_buffer(
                 &vk::BufferCreateInfo::default()
-                    .size(bytes.len() as u64 + 65536 * 36)
+                    .size(bytes.len() as u64)
                     .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
                     .sharing_mode(vk::SharingMode::EXCLUSIVE),
                 None,
@@ -199,12 +217,24 @@ impl Panel {
             None,
         )?;
         for layer in 0..layers as usize {
-            let (w, h, bytes) = if let Some(scene) = scene {
+            let (w, h, mut bytes) = if let Some(scene) = scene {
                 let [w, h] = scene.texture_sizes[layer];
                 (w, h, scene.texture_pixels(layer))
             } else {
                 (width, height, pixels.to_vec())
             };
+            let leaf = scene
+                .and_then(|s| s.leaf.as_ref())
+                .filter(|(_, l, _)| *l == layer);
+            if let Some((_, _, data)) = leaf {
+                bytes.extend_from_slice(&data[216..]);
+            }
+            let trunk = scene
+                .and_then(|s| s.trunk_mips.as_ref())
+                .filter(|m| m.layer == layer);
+            if let Some(mip) = trunk {
+                bytes.extend_from_slice(&mip.rgba[262144..]);
+            }
             p.textures.push(Texture::new(
                 d,
                 instance,
@@ -219,6 +249,13 @@ impl Panel {
                     s.filter == jade_assets::TextureFilter::Trilinear && layer < s.ui_start as usize
                 }),
                 scene.is_none_or(|s| s.color_pipeline == jade_assets::ColorPipeline::Srgb),
+                if leaf.is_some() {
+                    5
+                } else if trunk.is_some() {
+                    6
+                } else {
+                    0
+                },
             )?);
         }
         let filter = if scene.is_some_and(|s| s.filter != jade_assets::TextureFilter::Nearest) {
@@ -279,6 +316,16 @@ impl Panel {
                 None,
             )?,
         );
+        p.extra_samplers.push(
+            d.create_sampler(
+                &vk::SamplerCreateInfo::default()
+                    .mag_filter(vk::Filter::LINEAR)
+                    .min_filter(vk::Filter::LINEAR)
+                    .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+                    .max_lod(vk::LOD_CLAMP_NONE),
+                None,
+            )?,
+        );
         let bindings: Vec<_> = (0..3)
             .map(|binding| {
                 vk::DescriptorSetLayoutBinding::default()
@@ -313,6 +360,13 @@ impl Panel {
                 let info = [vk::DescriptorImageInfo::default()
                     .sampler(if layer >= p.ui_start {
                         p.extra_samplers[2]
+                    } else if binding == 1
+                        && scene.is_some_and(|s| {
+                            s.leaf.as_ref().is_some_and(|(_, l, _)| *l == layer)
+                                || s.trunk_mips.as_ref().is_some_and(|m| m.layer == layer)
+                        })
+                    {
+                        p.extra_samplers[3]
                     } else {
                         sampler
                     })
@@ -338,7 +392,7 @@ impl Panel {
                     vk::PushConstantRange::default()
                         .stage_flags(vk::ShaderStageFlags::FRAGMENT)
                         .offset(80)
-                        .size(32),
+                        .size(36),
                 ]),
             None,
         )?;
@@ -490,10 +544,16 @@ impl Panel {
                 .module(p.shaders[1])
                 .name(c"main"),
         ];
-        let bindings = [vk::VertexInputBindingDescription::default()
-            .binding(0)
-            .stride(36)
-            .input_rate(vk::VertexInputRate::VERTEX)];
+        let bindings = [
+            vk::VertexInputBindingDescription::default()
+                .binding(0)
+                .stride(36)
+                .input_rate(vk::VertexInputRate::VERTEX),
+            vk::VertexInputBindingDescription::default()
+                .binding(1)
+                .stride(1)
+                .input_rate(vk::VertexInputRate::VERTEX),
+        ];
         let attributes = [
             vk::VertexInputAttributeDescription::default()
                 .location(0)
@@ -515,6 +575,10 @@ impl Panel {
                 .binding(0)
                 .format(vk::Format::R32_SFLOAT)
                 .offset(32),
+            vk::VertexInputAttributeDescription::default()
+                .location(4)
+                .binding(1)
+                .format(vk::Format::R8_UNORM),
         ];
         let vertex = if scene.is_some() {
             vk::PipelineVertexInputStateCreateInfo::default()
@@ -565,7 +629,11 @@ impl Panel {
             }
         }
         if scene.is_some() {
-            for destination in [vk::BlendFactor::ONE_MINUS_SRC_ALPHA, vk::BlendFactor::ONE] {
+            for (destination, write) in [
+                (vk::BlendFactor::ONE_MINUS_SRC_ALPHA, false),
+                (vk::BlendFactor::ONE, false),
+                (vk::BlendFactor::ONE_MINUS_SRC_ALPHA, false),
+            ] {
                 let attachment = [vk::PipelineColorBlendAttachmentState::default()
                     .blend_enable(true)
                     .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
@@ -577,7 +645,7 @@ impl Panel {
                     .color_write_mask(vk::ColorComponentFlags::RGBA)];
                 let blend =
                     vk::PipelineColorBlendStateCreateInfo::default().attachments(&attachment);
-                let depth = depth_state.depth_write_enable(false);
+                let depth = depth_state.depth_write_enable(write);
                 let info = pipeline
                     .color_blend_state(&blend)
                     .depth_stencil_state(&depth);
@@ -638,7 +706,13 @@ impl Panel {
         menu_frame: Option<([f32; 20], Option<u32>)>,
         gamma: Option<u8>,
         ui: &[f32],
+        animation: (
+            f64,
+            &[jade_assets::palms::PalmVertex],
+            &[jade_assets::rido2::Curtain],
+        ),
     ) -> Result<(), vk::Result> {
+        let (elapsed, palms, curtain) = animation;
         self.gamma.as_ref().unwrap().update(gamma)?;
         if ui.len() > 65536 * 9
             || !ui.len().is_multiple_of(54)
@@ -652,7 +726,7 @@ impl Panel {
         {
             return Err(vk::Result::ERROR_UNKNOWN);
         }
-        if !ui.is_empty() {
+        if !ui.is_empty() || !palms.is_empty() || !curtain.is_empty() {
             // Presenter waited for the sole in-flight frame before this host write.
             let offset = self.vertex_count as u64 * 36;
             let ptr = self.device.map_memory(
@@ -661,6 +735,23 @@ impl Panel {
                 offset + std::mem::size_of_val(ui) as u64,
                 vk::MemoryMapFlags::empty(),
             )?;
+            for cloth in curtain {
+                for (index, xyz) in cloth.corners() {
+                    std::ptr::copy_nonoverlapping(
+                        xyz.as_ptr(),
+                        ptr.cast::<f32>().add(index * 9),
+                        3,
+                    );
+                }
+            }
+            for vertex in palms {
+                let xyz = vertex.position();
+                std::ptr::copy_nonoverlapping(
+                    xyz.as_ptr(),
+                    ptr.cast::<f32>().add(vertex.index * 9),
+                    3,
+                );
+            }
             std::ptr::copy_nonoverlapping(
                 ui.as_ptr().cast::<u8>(),
                 ptr.cast::<u8>().add(offset as usize),
@@ -705,7 +796,8 @@ impl Panel {
                 max_depth: 1.0,
             }],
         );
-        if let Some(camera) = menu_frame.map(|f| f.0).or(self.camera) {
+        let active_camera = menu_frame.map(|f| f.0).or(self.camera);
+        if let Some(camera) = active_camera {
             d.cmd_set_viewport(
                 command,
                 0,
@@ -726,7 +818,12 @@ impl Panel {
                 0,
                 &bytes,
             );
-            d.cmd_bind_vertex_buffers(command, 0, &[self.vertex_buffer], &[0]);
+            d.cmd_bind_vertex_buffers(
+                command,
+                0,
+                &[self.vertex_buffer, self.vertex_buffer],
+                &[0, (u64::from(self.vertex_count) + 65536) * 36],
+            );
         }
         if menu_frame.is_some() {
             let [x, y, width, height] =
@@ -754,18 +851,22 @@ impl Panel {
             &[self.sets[0]],
             &[],
         );
-        if self.camera.is_some() {
-            for draw in &self.draws {
+        if let Some(camera) = active_camera {
+            for index in self.draw_order.indices(&self.draws, &camera) {
+                let draw = &self.draws[index];
                 let pipeline = match draw.blend {
                     1 => self.blended[0],
                     6 => self.blended[1],
+                    7 => self.blended[2],
                     _ => self.pipeline,
                 };
                 d.cmd_bind_pipeline(command, vk::PipelineBindPoint::GRAPHICS, pipeline);
-                let bytes: Vec<u8> = draw
-                    .parameters
-                    .iter()
-                    .flat_map(|v| v.to_ne_bytes())
+                let parameters =
+                    uv_motion::parameters(draw.parameters, self.uv_rates[index], elapsed);
+                let bytes: Vec<u8> = parameters
+                    .into_iter()
+                    .chain([draw.vertex_fog as f32 + if draw.blend == 7 { 4. } else { 0. }])
+                    .flat_map(f32::to_ne_bytes)
                     .collect();
                 d.cmd_push_constants(
                     command,
@@ -798,7 +899,7 @@ impl Panel {
             d.cmd_draw(command, self.vertex_count, 1, 0, 0);
         }
         if let Some((_, Some(first))) = menu_frame {
-            let parameters = [1f32, 1., 0., 0., 1., 1., 0., 0.];
+            let parameters = [1f32, 1., 0., 0., 1., 1., 0., 0., 0.];
             let bytes: Vec<u8> = parameters.iter().flat_map(|v| v.to_ne_bytes()).collect();
             d.cmd_bind_pipeline(command, vk::PipelineBindPoint::GRAPHICS, self.ui_pipeline);
             d.cmd_push_constants(
@@ -821,7 +922,7 @@ impl Panel {
             }
         }
         if !ui.is_empty() {
-            let parameters = [1f32, 1., 0., 0., 1., 1., 0., 0.];
+            let parameters = [1f32, 1., 0., 0., 1., 1., 0., 0., 0.];
             let bytes: Vec<u8> = parameters.iter().flat_map(|v| v.to_ne_bytes()).collect();
             d.cmd_bind_pipeline(command, vk::PipelineBindPoint::GRAPHICS, self.ui_pipeline);
             d.cmd_push_constants(

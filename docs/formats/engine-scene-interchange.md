@@ -108,3 +108,21 @@ Color pipeline selection is a viewer option, not stored in the interchange.
 The default is sRGB texture decoding and attachment encoding. The diagnostic
 `legacy-unorm` option keeps stored-value arithmetic through blending and output.
 Generated mipmaps follow that format choice; original mipmaps remain absent.
+
+## Bounded native texture sidecars (2026-11-03)
+
+The frozen menu exporter adds optional `menu.trunk` (349456 bytes): signature
+`OJTRNK01` (8 bytes), little-endian u32 texture layer and level count (6), then
+RGBA8 levels 256x256 through 8x8, largest first. All six levels are native BC1
+decodes; no mipmap generation occurs. The reader checks dimensions, exact extent,
+layer bounds and equality of the base level to the scene texture. Missing sidecars
+retain the older base-level path; keep exported sidecars with their scene.
+
+The existing `menu.leaf` carries `OJLEAF01`, first corner and texture layer (u32),
+216 vertex alpha bytes and four lower RGBA BC3 levels (64x32 through 8x4).
+Its base remains in the scene. Blend mode 7 denotes this bounded native leaf pass:
+strict alpha >150/255, source-alpha blending, depth test enabled, depth write off.
+Its flags must be 0/2/4 (fog off/normal/inverted). Earlier experimental packages
+with depth-write flags are rejected and must be regenerated. The verified order
+is opaque geometry, this leaf pass, then other transparent passes. These sidecars
+are research interchange data, not general native Jade format definitions.
