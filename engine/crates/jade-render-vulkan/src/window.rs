@@ -415,9 +415,16 @@ impl Presenter {
             d.reset_command_buffer(self.command, vk::CommandBufferResetFlags::empty())?;
             d.begin_command_buffer(self.command, &vk::CommandBufferBeginInfo::default())?;
             let now = std::time::Instant::now();
-            let (palms, curtain) = self.scene.as_mut().map_or((&mut [][..], &mut [][..]), |s| {
-                (s.palms.as_mut_slice(), s.curtains.as_mut_slice())
-            });
+            let (palms, curtain, mut rain) =
+                self.scene
+                    .as_mut()
+                    .map_or((&mut [][..], &mut [][..], None), |s| {
+                        (
+                            s.palms.as_mut_slice(),
+                            s.curtains.as_mut_slice(),
+                            s.rain.as_mut(),
+                        )
+                    });
             let last = self.palm_frame.replace(now);
             let step = match self.fixed_seconds {
                 Some(t) => last.is_none().then_some(t),
@@ -433,6 +440,9 @@ impl Presenter {
                     cloth.advance(dt);
                 }
             }
+            if let (Some(dt), Some(rain)) = (step, rain.as_deref_mut()) {
+                rain.advance(dt);
+            }
             self.panel.as_ref().unwrap().draw(
                 self.command,
                 index as usize,
@@ -445,6 +455,7 @@ impl Presenter {
                         .unwrap_or_else(|| self.material_clock.elapsed().as_secs_f64()),
                     palms,
                     curtain,
+                    rain.as_deref(),
                 ),
             )?;
             d.end_command_buffer(self.command)?;

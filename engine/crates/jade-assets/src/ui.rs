@@ -341,6 +341,10 @@ mod invalid_bundle_tests {
     fn malformed_bundle_does_not_mutate_scene() {
         let mut scene = Scene {
             leaf: None,
+            menu_blur: true,
+            rain: None,
+            glow: None,
+            menu_additive: true,
             trunk_mips: None,
             curtains: Vec::new(),
             palms: vec![],

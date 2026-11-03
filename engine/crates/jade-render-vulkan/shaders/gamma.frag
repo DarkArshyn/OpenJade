@@ -12,5 +12,6 @@ void main() {
         stored=vec3(lookup(stored.r),lookup(stored.g),lookup(stored.b));
         color.rgb=data.options.y>0.5?decode(stored):stored;
     }
+    if(data.options.z>0.5) color=vec4(vec3(color.a),1.0);
     output_color=color;
 }

@@ -6,6 +6,8 @@ mod uv_motion;
 use draw_order::DrawOrder;
 #[path = "gamma.rs"]
 mod gamma;
+#[path = "menu_blur.rs"]
+mod menu_blur;
 #[path = "texture.rs"]
 mod texture_resource;
 use ash::vk;
@@ -17,6 +19,8 @@ use texture_resource::Texture;
 pub(super) struct Panel {
     device: ash::Device,
     gamma: Option<GammaPass>,
+    blur: Option<menu_blur::MenuBlur>,
+    resume_pass: vk::RenderPass,
     render_pass: vk::RenderPass,
     views: Vec<vk::ImageView>,
     frames: Vec<vk::Framebuffer>,
@@ -30,6 +34,8 @@ pub(super) struct Panel {
     layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     ui_pipeline: vk::Pipeline,
+    glow_pipeline: vk::Pipeline,
+    glow: Option<(Draw, f32)>,
     blended: Vec<vk::Pipeline>,
     extra_samplers: Vec<vk::Sampler>,
     draws: Vec<Draw>,
@@ -63,6 +69,8 @@ impl Panel {
         let mut p = Self {
             device: d.clone(),
             gamma: None,
+            blur: None,
+            resume_pass: vk::RenderPass::null(),
             render_pass: vk::RenderPass::null(),
             views: vec![],
             frames: vec![],
@@ -86,6 +94,15 @@ impl Panel {
             layout: vk::PipelineLayout::null(),
             pipeline: vk::Pipeline::null(),
             ui_pipeline: vk::Pipeline::null(),
+            glow_pipeline: vk::Pipeline::null(),
+            glow: scene.and_then(|s| {
+                s.glow.and_then(|(first, alpha)| {
+                    s.draws
+                        .iter()
+                        .find(|d| d.first == first)
+                        .map(|d| (d.clone(), f32::from(alpha) / 255.))
+                })
+            }),
             blended: vec![],
             extra_samplers: vec![],
             uv_rates: scene.map_or_else(Vec::new, |s| s.uv_rates.clone()),
@@ -134,6 +151,10 @@ impl Panel {
                 .collect();
             let alpha_offset = bytes.len() + 65536 * 36;
             bytes.resize(alpha_offset + scene.vertices.len() / 9 + 65536, 255);
+            if let Some(rain) = &scene.rain {
+                bytes[alpha_offset + rain.first..alpha_offset + rain.first + rain.alphas.len()]
+                    .copy_from_slice(&rain.alphas);
+            }
             if let Some((first, _, data)) = &scene.leaf {
                 bytes[alpha_offset + first..alpha_offset + first + 216]
                     .copy_from_slice(&data[..216]);
@@ -461,16 +482,20 @@ impl Panel {
             .src_access_mask(vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE)
             .dst_access_mask(
                 vk::AccessFlags::COLOR_ATTACHMENT_WRITE
+                    | vk::AccessFlags::COLOR_ATTACHMENT_READ
                     | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
             )];
         let dependencies = [
             dependencies[0]
                 .src_access_mask(
                     vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
-                        | vk::AccessFlags::INPUT_ATTACHMENT_READ,
+                        | vk::AccessFlags::INPUT_ATTACHMENT_READ
+                        | vk::AccessFlags::SHADER_READ
+                        | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
                 )
                 .src_stage_mask(
                     vk::PipelineStageFlags::FRAGMENT_SHADER
+                        | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
                         | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
                 ),
             vk::SubpassDependency::default()
@@ -489,6 +514,24 @@ impl Panel {
                 .dependencies(&dependencies),
             None,
         )?;
+        let enable_blur = scene.is_some_and(|s| {
+            s.menu_blur
+                && s.trunk_mips.is_some()
+                && s.color_pipeline == jade_assets::ColorPipeline::LegacyUnorm
+        });
+        if enable_blur {
+            let mut resumed = attachment;
+            resumed[0] = resumed[0]
+                .load_op(vk::AttachmentLoadOp::LOAD)
+                .initial_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+            p.resume_pass = d.create_render_pass(
+                &vk::RenderPassCreateInfo::default()
+                    .attachments(&resumed)
+                    .subpasses(&subpass)
+                    .dependencies(&dependencies),
+                None,
+            )?;
+        }
         for &image in images {
             let view = d.create_image_view(
                 &vk::ImageViewCreateInfo::default()
@@ -602,8 +645,13 @@ impl Panel {
             .line_width(1.0);
         let samples = vk::PipelineMultisampleStateCreateInfo::default()
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
-        let blend_attachment = [vk::PipelineColorBlendAttachmentState::default()
-            .color_write_mask(vk::ColorComponentFlags::RGBA)];
+        let blend_attachment = [
+            vk::PipelineColorBlendAttachmentState::default().color_write_mask(
+                vk::ColorComponentFlags::R
+                    | vk::ColorComponentFlags::G
+                    | vk::ColorComponentFlags::B,
+            ),
+        ];
         let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachment);
         let dynamics = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamics);
@@ -628,6 +676,25 @@ impl Panel {
                 return Err(error);
             }
         }
+        if p.glow.is_some() {
+            let mask_attachment = [vk::PipelineColorBlendAttachmentState::default()
+                .color_write_mask(vk::ColorComponentFlags::A)];
+            let mask_blend =
+                vk::PipelineColorBlendStateCreateInfo::default().attachments(&mask_attachment);
+            match d.create_graphics_pipelines(
+                vk::PipelineCache::null(),
+                &[pipeline.color_blend_state(&mask_blend)],
+                None,
+            ) {
+                Ok(v) => p.glow_pipeline = v[0],
+                Err((partial, e)) => {
+                    for item in partial {
+                        d.destroy_pipeline(item, None);
+                    }
+                    return Err(e);
+                }
+            }
+        }
         if scene.is_some() {
             for (destination, write) in [
                 (vk::BlendFactor::ONE_MINUS_SRC_ALPHA, false),
@@ -642,7 +709,11 @@ impl Panel {
                     .src_alpha_blend_factor(vk::BlendFactor::ONE)
                     .dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
                     .alpha_blend_op(vk::BlendOp::ADD)
-                    .color_write_mask(vk::ColorComponentFlags::RGBA)];
+                    .color_write_mask(
+                        vk::ColorComponentFlags::R
+                            | vk::ColorComponentFlags::G
+                            | vk::ColorComponentFlags::B,
+                    )];
                 let blend =
                     vk::PipelineColorBlendStateCreateInfo::default().attachments(&attachment);
                 let depth = depth_state.depth_write_enable(write);
@@ -697,6 +768,16 @@ impl Panel {
             }
         }
         p.gamma.as_mut().unwrap().pipeline(p.render_pass)?;
+        if enable_blur {
+            p.blur = Some(menu_blur::MenuBlur::new(
+                d,
+                instance,
+                gpu,
+                p.gamma.as_ref().unwrap().view,
+                p.render_pass,
+                scene.is_some_and(|s| s.menu_additive && s.glow.is_some()),
+            )?);
+        }
         Ok(p)
     }
     pub(super) unsafe fn draw(
@@ -710,9 +791,10 @@ impl Panel {
             f64,
             &[jade_assets::palms::PalmVertex],
             &[jade_assets::rido2::Curtain],
+            Option<&jade_assets::rain::Rain>,
         ),
     ) -> Result<(), vk::Result> {
-        let (elapsed, palms, curtain) = animation;
+        let (elapsed, palms, curtain, rain) = animation;
         self.gamma.as_ref().unwrap().update(gamma)?;
         if ui.len() > 65536 * 9
             || !ui.len().is_multiple_of(54)
@@ -726,15 +808,28 @@ impl Panel {
         {
             return Err(vk::Result::ERROR_UNKNOWN);
         }
-        if !ui.is_empty() || !palms.is_empty() || !curtain.is_empty() {
+        if !ui.is_empty() || !palms.is_empty() || !curtain.is_empty() || rain.is_some() {
             // Presenter waited for the sole in-flight frame before this host write.
             let offset = self.vertex_count as u64 * 36;
             let ptr = self.device.map_memory(
                 self.vertex_memory,
                 0,
-                offset + std::mem::size_of_val(ui) as u64,
+                vk::WHOLE_SIZE,
                 vk::MemoryMapFlags::empty(),
             )?;
+            if let Some(rain) = rain {
+                std::ptr::copy_nonoverlapping(
+                    rain.vertices.as_ptr(),
+                    ptr.cast::<f32>().add(rain.first * 9),
+                    rain.vertices.len(),
+                );
+                let alpha_offset = self.vertex_count as usize * 36 + 65536 * 36 + rain.first;
+                std::ptr::copy_nonoverlapping(
+                    rain.alphas.as_ptr(),
+                    ptr.cast::<u8>().add(alpha_offset),
+                    rain.alphas.len(),
+                );
+            }
             for cloth in curtain {
                 for (index, xyz) in cloth.corners() {
                     std::ptr::copy_nonoverlapping(
@@ -764,7 +859,7 @@ impl Panel {
         let clear = [
             vk::ClearValue {
                 color: vk::ClearColorValue {
-                    float32: [0.025, 0.065, 0.09, 1.0],
+                    float32: [0.025, 0.065, 0.09, 0.0],
                 },
             },
             vk::ClearValue {
@@ -898,6 +993,75 @@ impl Panel {
         } else {
             d.cmd_draw(command, self.vertex_count, 1, 0, 0);
         }
+        if let Some((draw, alpha)) = &self.glow {
+            d.cmd_bind_pipeline(command, vk::PipelineBindPoint::GRAPHICS, self.glow_pipeline);
+            let mut parameters = draw.parameters;
+            parameters[4] = *alpha;
+            parameters[6] = 0.;
+            let bytes: Vec<u8> = parameters
+                .into_iter()
+                .chain([0.])
+                .flat_map(f32::to_ne_bytes)
+                .collect();
+            d.cmd_push_constants(
+                command,
+                self.layout,
+                vk::ShaderStageFlags::FRAGMENT,
+                80,
+                &bytes,
+            );
+            d.cmd_bind_descriptor_sets(
+                command,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.layout,
+                0,
+                &[self.sets[self.vertex_layers[draw.first as usize]]],
+                &[],
+            );
+            d.cmd_draw(command, draw.count, 1, draw.first, 0);
+        }
+        if let Some(blur) = &self.blur {
+            // Finish scene storage before sampling it. The presentation subpass is
+            // intentionally empty here; the resumed pass handles UI and gamma.
+            d.cmd_next_subpass(command, vk::SubpassContents::INLINE);
+            d.cmd_end_render_pass(command);
+            d.cmd_pipeline_barrier(
+                command,
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::empty(),
+                &[vk::MemoryBarrier::default()
+                    .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                    .dst_access_mask(vk::AccessFlags::SHADER_READ)],
+                &[],
+                &[],
+            );
+            let viewport = if menu_frame.is_some() {
+                jade_assets::ui::viewport(self.extent.width, self.extent.height)
+            } else {
+                [0., 0., self.extent.width as f32, self.extent.height as f32]
+            };
+            blur.build(
+                command,
+                [
+                    viewport[0] / self.extent.width as f32,
+                    viewport[1] / self.extent.height as f32,
+                    viewport[2] / self.extent.width as f32,
+                    viewport[3] / self.extent.height as f32,
+                ],
+            );
+            d.cmd_begin_render_pass(
+                command,
+                &vk::RenderPassBeginInfo::default()
+                    .render_pass(self.resume_pass)
+                    .framebuffer(self.frames[index])
+                    .render_area(rect)
+                    .clear_values(&clear),
+                vk::SubpassContents::INLINE,
+            );
+            blur.additive_composite(command, viewport, self.extent);
+            blur.composite(command, viewport, self.extent);
+        }
         if let Some((_, Some(first))) = menu_frame {
             let parameters = [1f32, 1., 0., 0., 1., 1., 0., 0., 0.];
             let bytes: Vec<u8> = parameters.iter().flat_map(|v| v.to_ne_bytes()).collect();
@@ -958,6 +1122,7 @@ impl Drop for Panel {
                 d.destroy_pipeline(pipeline, None);
             }
             d.destroy_pipeline(self.ui_pipeline, None);
+            d.destroy_pipeline(self.glow_pipeline, None);
             d.destroy_pipeline(self.pipeline, None);
             d.destroy_pipeline_layout(self.layout, None);
             for shader in self.shaders.drain(..) {
@@ -967,6 +1132,7 @@ impl Drop for Panel {
                 d.destroy_framebuffer(frame, None);
             }
             d.destroy_render_pass(self.render_pass, None);
+            d.destroy_render_pass(self.resume_pass, None);
             d.destroy_image_view(self.depth_view, None);
             d.destroy_image(self.depth, None);
             d.free_memory(self.depth_memory, None);

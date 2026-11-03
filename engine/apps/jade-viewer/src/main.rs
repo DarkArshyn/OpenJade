@@ -521,6 +521,49 @@ fn main() -> std::process::ExitCode {
             scene.color_pipeline
         );
     }
+    if let Some(i) = args.iter().position(|s| s == "--no-rain") {
+        if let Some(scene) = &mut scene {
+            scene.rain = None;
+        }
+        args.remove(i);
+    }
+    if let Some(scene) = &scene {
+        println!(
+            "Native menu rain: {} (private seed 1; 60 Hz research clock)",
+            if scene.rain.is_some() {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+    }
+    if let Some(i) = args.iter().position(|s| s == "--no-menu-additive") {
+        if let Some(scene) = &mut scene {
+            scene.menu_additive = false;
+        }
+        args.remove(i);
+    }
+    if let Some(i) = args.iter().position(|s| s == "--no-menu-blur") {
+        let Some(scene) = &mut scene else {
+            eprintln!("--no-menu-blur requires --scene");
+            return std::process::ExitCode::FAILURE;
+        };
+        scene.menu_blur = false;
+        args.remove(i);
+    }
+    if let Some(scene) = &scene {
+        println!(
+            "Native menu blur: {} (requires native menu sidecars and legacy-unorm)",
+            if scene.menu_blur
+                && scene.trunk_mips.is_some()
+                && scene.color_pipeline == jade_assets::ColorPipeline::LegacyUnorm
+            {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+    }
     let mut gamma = None;
     if let Some(i) = args.iter().position(|s| s == "--gamma") {
         gamma = args
@@ -613,7 +656,7 @@ fn main() -> std::process::ExitCode {
         None
     };
     if args.iter().any(|s| s == "--help" || s == "-h") {
-        println!("jade-viewer [--scene PATH] [--menu BUNDLE] [--texture-filter nearest|linear|trilinear] [--color-pipeline srgb|legacy-unorm] [--gamma 0..100 | --settings PATH] [--validation] [--smoke]\njade-viewer --probe [--validation]\nDefault: diagnostic panel. --scene: decoded research geometry with depth and fixed camera. Smoke resizes twice and exits after 80 frames.");
+        println!("jade-viewer [--scene PATH] [--menu BUNDLE] [--texture-filter nearest|linear|trilinear] [--color-pipeline srgb|legacy-unorm] [--gamma 0..100 | --settings PATH] [--no-menu-blur] [--no-menu-additive] [--no-rain] [--validation] [--smoke]\njade-viewer --probe [--validation]\nDefault: diagnostic panel. --scene: decoded research geometry with depth and fixed camera. Smoke resizes twice and exits after 80 frames.");
         return std::process::ExitCode::SUCCESS;
     }
     if args

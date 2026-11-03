@@ -11,6 +11,7 @@ pub struct Draw {
     /// 0 = opaque, 1 = source-over, 6 = source-alpha additive.
     pub blend: u32,
     /// 0 disables fog, 1 uses the normal GOG range, 2 inverts it.
+    /// Runtime rain adds 4 to enable per-vertex alpha (not an OJSCN file flag).
     pub vertex_fog: u32,
     /// UV scale/offset, alpha, RGB gain, alpha cutoff, sampler (0/1/2).
     pub parameters: [f32; 8],
@@ -31,14 +32,20 @@ pub enum ColorPipeline {
 pub mod curtain_field;
 pub mod native_mips;
 pub mod palms;
+pub mod rain;
 pub mod rido2;
 pub struct Scene {
+    pub rain: Option<rain::Rain>,
+    pub glow: Option<(u32, u8)>,
+    pub menu_additive: bool,
     pub trunk_mips: Option<native_mips::TrunkMips>,
     pub leaf: Option<(usize, usize, Vec<u8>)>,
     pub curtains: Vec<rido2::Curtain>,
     pub palms: Vec<palms::PalmVertex>,
     /// Diagnostic choice, not a recovered original runtime state.
     pub color_pipeline: ColorPipeline,
+    /// Enables the measured menu blur when native menu sidecars and UNORM are used.
+    pub menu_blur: bool,
     /// Actual base-level dimensions inside each transport slot.
     pub texture_sizes: Vec<[u32; 2]>,
     /// First UI texture; UI filtering is independent of scene filtering.
@@ -114,6 +121,39 @@ impl Scene {
                     return Err(invalid("Trunk base mip differs from scene texture"));
                 }
                 scene.trunk_mips = Some(mip);
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        match std::fs::File::open(path.with_extension("glow")) {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                file.take(21).read_to_end(&mut bytes)?;
+                if bytes.len() != 20 || &bytes[..8] != b"OJGLOW01" {
+                    return Err(invalid("Invalid glow sidecar"));
+                }
+                let first = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
+                let count = u32::from_le_bytes(bytes[12..16].try_into().unwrap());
+                let alpha = u32::from_le_bytes(bytes[16..20].try_into().unwrap());
+                if count != 72
+                    || alpha > 255
+                    || !scene
+                        .draws
+                        .iter()
+                        .any(|d| d.first == first && d.count == count && d.blend == 0)
+                {
+                    return Err(invalid("Invalid glow draw binding"));
+                }
+                scene.glow = Some((first, alpha as u8));
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        match std::fs::File::open(path.with_extension("rain")) {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                file.take(4417).read_to_end(&mut bytes)?;
+                rain::Rain::attach(&mut scene, &bytes)?;
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),
@@ -312,6 +352,10 @@ impl Scene {
             ui_start: layers,
             filter: TextureFilter::default(),
             color_pipeline: ColorPipeline::default(),
+            menu_blur: true,
+            rain: None,
+            glow: None,
+            menu_additive: true,
             vertices,
             width,
             height,
@@ -539,6 +583,10 @@ mod native_texture_tests {
             ui_start: 1,
             filter: TextureFilter::Linear,
             color_pipeline: ColorPipeline::default(),
+            menu_blur: true,
+            rain: None,
+            glow: None,
+            menu_additive: true,
         };
         assert_eq!(
             s.texture_pixels(0),

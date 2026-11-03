@@ -67,7 +67,9 @@ impl GammaPass {
                 .samples(vk::SampleCountFlags::TYPE_1)
                 .tiling(vk::ImageTiling::OPTIMAL)
                 .usage(
-                    vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | vk::ImageUsageFlags::INPUT_ATTACHMENT
+                        | vk::ImageUsageFlags::SAMPLED,
                 ),
             None,
         )?;
@@ -247,6 +249,11 @@ impl GammaPass {
         }
         data[1024] = if value.is_some() { 1. } else { 0. };
         data[1025] = if self.srgb { 1. } else { 0. };
+        data[1026] = if std::env::var_os("OPENJADE_CAPTURE_GLOW_MASK").is_some() {
+            1.
+        } else {
+            0.
+        };
         let ptr =
             self.device
                 .map_memory(self.buffer_memory, 0, 4112, vk::MemoryMapFlags::empty())?;

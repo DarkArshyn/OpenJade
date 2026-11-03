@@ -53,7 +53,7 @@ is `game/TSoT-GOG`; no path is a bundled dependency or permission to redistribut
 | 4. Screen behavior | Document layout, colors, order and dependencies against original observations | Partial: MGM evidence and seventeen 800x600 screenshots; some behavior remains reconstructed |
 | 5. First rendered screen | Render reconstructed UI and original resources with independent code | Native detailed menu UI overlays 48 decoded 3D objects. Native scene texture dimensions, filtering/mipmap and color-pipeline comparisons, plus post-composition gamma are implemented. Lighting/fog fidelity and high-resolution UI remain unfinished |
 | 6. Interactive menu | Reproduce selection, input, navigation and transitions | Native detailed screens, profile creation/selection/deletion, keyboard-binding capture, settings/quit confirmations and Camera02 playback. Gamma, filtering, window resolution and V-Sync affect the viewer; committed preferences/profiles persist in an OpenJade file. Unsupported systems remain disabled; binding storage is not gameplay input |
-| 7. Game systems | Implement scene/object/animation/collision/audio/gameplay with tests | Early rendering runtime: depth, textures, fog/fixture passes, explicit color paths and post-composition gamma; baked 60 Hz Camera02 playback. General animation, collision, audio, actors and gameplay are unimplemented. Native lighting fidelity is unresolved |
+| 7. Game systems | Implement scene/object/animation/collision/audio/gameplay with tests | Early rendering runtime: depth, textures, fog/fixture passes, scene blur, partial masked additive composition, explicit color paths and gamma; baked Camera02 playback, palm/curtain deformation and two native rain emitters. General animation, remaining particle effects, collision, audio, actors and gameplay are unimplemented. Native lighting fidelity and rain synchronization remain unresolved |
 | 8. Native ports | Build and validate Linux/macOS | Not started |
 
 No reliable overall completion percentage is available. Test counts and resource
@@ -258,6 +258,91 @@ OpenJade's, not a recovered original-game rule. Very large text can still enlarg
 the largest bitmap. Other DDS widgets have not all been restored to source size.
 See [UI scaling evidence](docs/observations/2026-10-29-ui-scaling.md).
 
+### Native fog particles and fullscreen composite
+
+The [direct GOG postprocess audit](docs/observations/2026-11-03-menu-postprocess.md)
+identifies two additional contributions to the measured menu patch: dynamic fog
+quads using texture `2E004FE4`, linked to `Menu3D_Fog3D` / `Menu3D_Fog3D2`, and a
+fullscreen blend with a blurred scene render target. The latter is independently
+reproduced from captured inputs to within one byte level per channel across the
+800x600 image, using the captured alpha 104/255. The subsequent [blur construction audit](docs/observations/2026-11-03-menu-blur-construction.md)
+recovers four current-frame passes: two native-gain copies/reductions followed
+by two three-tap filters. An independent reference reconstructs three consecutive
+outputs within 2/255; no previous-frame scene contribution is observed in this
+menu state. The [measured blur is now integrated in Vulkan](docs/observations/2026-11-03-vulkan-menu-blur.md),
+before UI and gamma. Dynamic fog-particle simulation remains pending. Matching the measured fog3 UV phase reduces
+part of the remaining difference; global illumination has not been adjusted.
+The separate additive chain is now partially implemented below; dynamic fog particles remain a future target.
+
+### Menu effects: inventory and native rain
+
+The [rain, birds and flies inventory](docs/observations/2026-11-03-menu-effects-inventory.md)
+resolves 24 selected objects and five effect descriptors in the frozen menu.
+Two rain instances share byte-identical descriptors; eight splash instances share
+one descriptor. Mesh birds, named bird particles and flies use distinct resources.
+Texture keys have multiple records, individually checked with the texture decoder. The [native rain reader and update](docs/observations/2026-11-03-rain-native-parameters.md)
+now establish emission, three timer phases and fixed-step acceleration. The bounded
+decoder matches the original x86 reader, and four isolated movement cases match
+native output. The [creation and lifetime checks](docs/observations/2026-11-03-rain-spawn-life-transform.md)
+now cover three random seeds, six phase boundaries, both stored emitter matrices
+and the matrix override branch. [Live menu observations](docs/observations/2026-11-03-rain-live-state.md) confirm both
+effective emitter matrices, capacity 150, accumulator updates and additive
+SRC_ALPHA/ONE drawing with depth writes disabled. [Rain appearance validation](docs/observations/2026-11-03-rain-appearance.md) now
+reproduces all 4,602 captured corners, UVs and packed colors across 767 particle
+observations in three phases. Texture modulation and additive alpha blending are
+identified. [Rain now runs in Vulkan](docs/observations/2026-11-03-vulkan-menu-rain.md):
+the optional `menu.rain` sidecar carries both effective stored matrices, native
+parameters, four phase colors and the original 32x32 texture. Rust emits and updates
+bounded populations, uploads six corners and byte alpha per particle, and draws
+with MODULATE2X, SRC_ALPHA/ONE, depth testing and no depth writes or applied fog.
+The Rust port matches the same 4,602 captured corners exactly. Fixed-time Vulkan
+checks at 0, 1 and 2 seconds are stable and error-free; rain changes the image at
+1 and 2 seconds. An 80-frame native-menu resize smoke test also passes.
+This validates integration, not full visual equivalence: a private seed and 60 Hz
+research clock are used, original shared RNG/time synchronization is unresolved,
+and splash, bird, insect and dynamic fog particles are not implemented.
+
+Regenerate a local package with `export_engine_materials.py --palm-source` to add
+the rain sidecar. Existing packages without it retain their previous behavior.
+Keep all sidecars next to the scene. From `engine/`:
+
+```powershell
+cargo run -p jade-viewer -- --scene ../reports/menu-rain-20261103/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --color-pipeline legacy-unorm --validation
+```
+
+Add `--no-rain` for an otherwise identical comparison. See the linked report for
+the export command, native-capture checks and GPU regression commands.
+
+### Native menu blur in Vulkan
+
+The prepared native menu enables the measured blur with `--color-pipeline legacy-unorm`.
+Keep `menu.trunk` and the other sidecars with the scene. Add `--no-menu-blur` for
+an unblurred comparison. The sRGB diagnostic path retains its previous behavior;
+the blur is not bound to the simulated Special Effects setting.
+
+```powershell
+# From engine/
+cargo run -p jade-viewer -- --scene ../reports/palm-runtime-20261101/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --color-pipeline legacy-unorm --validation
+```
+
+The 3D scene passes through the native-size intermediate targets and is composed
+before sharp UI and gamma. The independent fixed-image GPU check differs by at
+most 1/255 per RGB channel. Resize/gamma smoke validation reports zero errors.
+See [runtime design, limits and GPU regression](docs/observations/2026-11-03-vulkan-menu-blur.md).
+
+The [masked additive chain](docs/observations/2026-11-03-vulkan-menu-additive.md)
+is also implemented before the blur composite. A new `menu.glow` sidecar binds the
+verified 24-triangle balcony draw and its native alpha 184/255. Other native mask
+writers remain unimplemented; this is partial emitter coverage, not complete bloom
+fidelity. Ordinary texture opacity is excluded from the mask. Use
+`--no-menu-additive` to isolate the blur; `--no-menu-blur` bypasses both chains.
+The additive chain uses the current scene, with no previous-frame history.
+
+```powershell
+python tests/integration_menu_additive.py reports/menu-additive-20261103/menu.ojscene reports/menu-additive-gpu-check
+python -m unittest discover -s tests -p 'test_menu_additive.py'
+```
+
 ### Live Gamma control from the Python menus
 
 This optional **legacy OJUI0001** workflow is retained for comparison. It is not
@@ -297,8 +382,12 @@ cargo test --workspace
 # From the repository root
 python -m unittest discover -s tests -p 'test_export_engine*.py'
 python -m unittest discover -s tests -p 'test_native_mips.py'
+python -m unittest discover -s tests -p 'test_menu_postprocess.py'
+python -m unittest discover -s tests -p 'test_menu_blur.py'
 python -B -m unittest discover -s tests -p 'test_graphics_settings.py'
 python -B tests/check_native_ui_resources.py reports/engine-ui-scale-20261029 reports/POPData-extracted/menu/texture
+# Optional GPU blur check: prepared native scene and Vulkan SDK screenshot layer.
+python tests/integration_menu_blur.py reports/palm-runtime-20261101/menu.ojscene reports/menu-blur-gpu-check
 # Optional integration check: requires prepared local bundles, Tk and Vulkan.
 python -B tests/integration_gamma_bridge.py
 ```

@@ -18,6 +18,8 @@ fn main() {
         "ui.vert",
         "gamma.vert",
         "gamma.frag",
+        "menu_blur.vert",
+        "menu_blur.frag",
     ] {
         let source = PathBuf::from("shaders").join(name);
         println!("cargo:rerun-if-changed={}", source.display());

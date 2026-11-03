@@ -55,6 +55,8 @@ and multi-pass light-fixture materials:
 - Supported fog and flame-texture offsets
 animate in real time.
 - Seven palms now move using their decoded vertex deformation.
+- Two rain emitters use decoded parameters and verified particle geometry, colors and blending; timing remains under comparison.
+- A measured scene-blur effect softens the 3D background while keeping the menu interface sharp.
 - Scene textures retain their decoded dimensions; filtering and generated mipmaps can be compared in the viewer.
 - Lighting, transparency ordering and visual fidelity remain under investigation; this is not a faithful recreation yet.
 - The sky and moon are now included; some small effects remain absent.
@@ -94,7 +96,8 @@ See the [native prototype workflow](README-dev.md#native-menu-prototype) and the
 | Python menu simulation | Retained as a research/reference tool | No gameplay; optional legacy gamma bridge |
 | Native menu | Detailed screens over 3D scenery, four confirmed display controls, local profiles/settings and confirmations | Unsupported systems disabled; bindings stored but no gameplay |
 | Camera02 | Nine-second transition sampled from decoded tracks and played by the native viewer | Baked 60 Hz poses; no original scripting runtime or gameplay trigger chain |
-| Scene materials | Textures, depth, fog and multi-pass fixture blending | Original lighting, particles and exact filtering remain unresolved |
+| Scene materials | Textures, depth, fog, scene blur, partial masked glow and multi-pass fixture blending | Original lighting, remaining particle effects and exact filtering remain unresolved |
+| Menu rain | Two animated emitters with native textures and three life phases | Random sequence and scene-wide timing are not synchronized with the original |
 | Validation | Synthetic tests, Vulkan validation and local visual checks | Windows/AMD tested; no Linux/macOS validation |
 
 ## Development approach

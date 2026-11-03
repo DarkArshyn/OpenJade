@@ -125,6 +125,15 @@ See [interchange specification](../docs/formats/engine-scene-interchange.md).
   Game-derived resources are loaded only from an explicit local `--scene` package.
 
 Next: faithful lighting/materials, remaining settings backed by real systems, UI scaling and general animation systems.
+The [native menu composite audit](../docs/observations/2026-11-03-menu-postprocess.md)
+now identifies missing dynamic fog quads and a fullscreen blurred-scene blend.
+The [blur construction](../docs/observations/2026-11-03-menu-blur-construction.md)
+is now reconstructed in an independent reference from current-frame data, with
+no observed temporal reuse in the measured menu state. The measured blur now runs
+in Vulkan before UI and gamma for native menu packages in `legacy-unorm`; add
+`--no-menu-blur` for comparison. The balcony masked additive chain is partially
+implemented; dynamic fog particles remain pending.
+See [implementation and GPU validation](../docs/observations/2026-11-03-vulkan-menu-blur.md).
 Create `assets/scene/game-specific` crates when their first implemented behavior
 is introduced. Keep the existing research tools in the repository root.
 
@@ -196,7 +205,7 @@ This applies during Camera02 and reset without regenerating the asset bundle.
 Centroid sorting remains approximate for intersecting surfaces. See the
 [validation report](../docs/observations/2026-10-30-camera-transparency.md).
 
-### Animated scene materials and palms
+### Animated scene materials, palms and rain
 
 From `engine/`, with the latest local export:
 
@@ -207,5 +216,18 @@ cargo run -p jade-viewer -- --scene ../reports/palm-runtime-20261101/menu.ojscen
 OJSCN005 adds seven animated palms using their local vertex axes.
 Seven passes carry dynamic UV rates; lampion, sky and moon offsets stay static.
 The material clock survives resize/filter rebuilds and Camera02 reset. This is
-texture animation, not particles or dynamic scene lighting. See the
+texture animation; it does not implement dynamic scene lighting. See the
 [evidence and limitations](../docs/observations/2026-10-30-material-animation.md).
+
+New exports also carry `menu.rain`, which adds two native rain emitters with a
+32x32 texture, three-phase lifetime and additive quads. The Rust corner/UV/color
+calculation matches 4,602 captured native corners. A private seed and fixed 60 Hz
+research scheduler make tests repeatable; synchronization with the original game
+is not established. Birds, insects, splashes and dynamic fog particles remain absent.
+
+```powershell
+cargo run -p jade-viewer -- --scene ../reports/menu-rain-20261103/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --color-pipeline legacy-unorm --validation
+```
+
+Use `--no-rain` to isolate its contribution. Existing scenes without the sidecar
+remain supported. See [rain integration and validation](../docs/observations/2026-11-03-vulkan-menu-rain.md).

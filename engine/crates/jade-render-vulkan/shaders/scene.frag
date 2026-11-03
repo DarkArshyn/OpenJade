@@ -20,10 +20,10 @@ void main() {
     else if(material.shading.w<1.5) texel=texture(linearTextures,coords);
     else texel=texture(fogTextures,coords);
     float alpha=texel.a*material.shading.x;
-    bool leaf = material.fogMode >= 4.0;
-    if(leaf) alpha *= diffuseAlpha;
-    if(leaf ? alpha <= material.shading.z : alpha < material.shading.z) discard;
-    float fogMode = leaf ? material.fogMode-4.0 : material.fogMode;
+    bool perVertexAlpha = material.fogMode >= 4.0;
+    if(perVertexAlpha) alpha *= diffuseAlpha;
+    if(perVertexAlpha ? alpha <= material.shading.z : alpha < material.shading.z) discard;
+    float fogMode = perVertexAlpha ? material.fogMode-4.0 : material.fogMode;
     vec3 rgb=clamp(texel.rgb*color*material.shading.y,0.0,1.0);
     if(fogMode>0.5){
         float amount=fogMode<1.5 ? fogAmount : 1.0-fogAmount;

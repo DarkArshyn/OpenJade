@@ -1506,6 +1506,10 @@ mod tests {
         let camera = [0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1., 59.37908];
         let scene = Scene {
             leaf: None,
+            menu_blur: true,
+            rain: None,
+            glow: None,
+            menu_additive: true,
             trunk_mips: None,
             curtains: Vec::new(),
             palms: vec![],
