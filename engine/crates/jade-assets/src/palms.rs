@@ -12,7 +12,7 @@ pub struct PalmVertex {
     quarter: usize,
 }
 
-fn wave(angle: f32, shift: usize) -> f32 {
+pub(crate) fn wave(angle: f32, shift: usize) -> f32 {
     static TABLE: OnceLock<[f32; 1024]> = OnceLock::new();
     let table = TABLE.get_or_init(|| {
         std::array::from_fn(|i| (i as f64 * f64::from(std::f32::consts::TAU / 1024.)).sin() as f32)

@@ -415,14 +415,15 @@ impl Presenter {
             d.reset_command_buffer(self.command, vk::CommandBufferResetFlags::empty())?;
             d.begin_command_buffer(self.command, &vk::CommandBufferBeginInfo::default())?;
             let now = std::time::Instant::now();
-            let (palms, curtain, mut rain) =
+            let (palms, curtain, mut rain, mut splash) =
                 self.scene
                     .as_mut()
-                    .map_or((&mut [][..], &mut [][..], None), |s| {
+                    .map_or((&mut [][..], &mut [][..], None, None), |s| {
                         (
                             s.palms.as_mut_slice(),
                             s.curtains.as_mut_slice(),
                             s.rain.as_mut(),
+                            s.splashes.as_mut(),
                         )
                     });
             let last = self.palm_frame.replace(now);
@@ -443,6 +444,15 @@ impl Presenter {
             if let (Some(dt), Some(rain)) = (step, rain.as_deref_mut()) {
                 rain.advance(dt);
             }
+            if let Some(splash) = splash.as_deref_mut() {
+                if let Some((camera, _)) = self.menu_frame {
+                    splash.billboard = [
+                        camera[4..7].try_into().unwrap(),
+                        std::array::from_fn(|i| -camera[8 + i]),
+                    ];
+                }
+                splash.advance(step.unwrap_or(0.));
+            }
             self.panel.as_ref().unwrap().draw(
                 self.command,
                 index as usize,
@@ -455,7 +465,7 @@ impl Presenter {
                         .unwrap_or_else(|| self.material_clock.elapsed().as_secs_f64()),
                     palms,
                     curtain,
-                    rain.as_deref(),
+                    [rain.as_deref(), splash.as_deref()],
                 ),
             )?;
             d.end_command_buffer(self.command)?;

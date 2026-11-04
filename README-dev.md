@@ -276,6 +276,8 @@ The separate additive chain is now partially implemented below; dynamic fog part
 
 ### Menu effects: inventory and native rain
 
+The [splash emitter investigation](docs/observations/2026-11-04-splash-emitter-link.md) resolves a reference to Cam_Manager.gao and separates isolated spawn behavior from live activation.
+
 The [rain, birds and flies inventory](docs/observations/2026-11-03-menu-effects-inventory.md)
 resolves 24 selected objects and five effect descriptors in the frozen menu.
 Two rain instances share byte-identical descriptors; eight splash instances share
@@ -300,7 +302,7 @@ checks at 0, 1 and 2 seconds are stable and error-free; rain changes the image a
 1 and 2 seconds. An 80-frame native-menu resize smoke test also passes.
 This validates integration, not full visual equivalence: a private seed and 60 Hz
 research clock are used, original shared RNG/time synchronization is unresolved,
-and splash, bird, insect and dynamic fog particles are not implemented.
+and bird, insect and dynamic fog particles remain open. Eight native splash emitters now run alongside rain using the optional menu.splash file. The [capture and runtime checks](docs/observations/2026-11-04-splash-emitter-link.md) cover their birth vectors, phase colors, oriented quads and draw state. The fixed-menu splash fog matches the measured GOG InvertFogRange=0 color and vertex-depth curve. Isolated native draw replays changed RGB by at most 2/255 with this setting and 51/255 with the inverted setting.
 
 Regenerate a local package with `export_engine_materials.py --palm-source` to add
 the rain sidecar. Existing packages without it retain their previous behavior.

@@ -12,6 +12,7 @@ struct Config {
     capacity: usize,
     values: [f32; 18],
     colors: [u32; 4],
+    splash: Option<[f32; 3]>,
 }
 #[derive(Clone, Debug)]
 struct Particle {
@@ -36,6 +37,7 @@ pub struct Rain {
     seed: u32,
     pending: f64,
     layer: f32,
+    pub billboard: [[f32; 3]; 2],
 }
 fn unit(seed: &mut u32) -> f32 {
     *seed = seed.wrapping_mul(214013).wrapping_add(2531011);
@@ -54,6 +56,36 @@ fn spawn(c: &Config, seed: &mut u32) -> Particle {
         phase = 0;
     }
     let sizes = [sample(seed, v[14], v[15]), sample(seed, v[16], v[17])];
+    if let Some([offset, spread_a, spread_b]) = c.splash {
+        use crate::palms::wave;
+        let tau = std::f32::consts::TAU;
+        let azimuth = sample(seed, 0., tau);
+        let elevation = sample(seed, -tau / 4., tau / 4.);
+        let radius = sample(seed, 0., v[1]);
+        let a = sample(seed, -spread_a, spread_a);
+        let b = sample(seed, -spread_a, spread_b);
+        let speed = sample(seed, v[3], v[4]);
+        let m = &c.matrix;
+        let local = [
+            radius * wave(azimuth, 256) * wave(elevation, 256),
+            radius * wave(azimuth, 0) * wave(elevation, 256) - offset,
+            radius * wave(elevation, 0),
+        ];
+        let direction = [
+            speed * wave(a, 0) * wave(b, 256),
+            -speed * wave(a, 256) * wave(b, 256),
+            speed * wave(b, 0),
+        ];
+        let transform = |w: [f32; 3], i: usize| m[i] * w[0] + m[4 + i] * w[1] + m[8 + i] * w[2];
+        return Particle {
+            phase,
+            position: std::array::from_fn(|i| m[12 + i] + transform(local, i)),
+            velocity: std::array::from_fn(|i| transform(direction, i)),
+            inverse: 1. / remaining,
+            remaining,
+            sizes,
+        };
+    }
     let x = ((2. * unit(seed) as f64 - 1.) * v[1] as f64) as f32;
     let z = ((2. * unit(seed) as f64 - 1.) * v[2] as f64) as f32;
     let _speed = sample(seed, v[3], v[4]); // Zero speed still consumes a draw.
@@ -113,26 +145,50 @@ fn packed_lerp(a: u32, b: u32, t: f32) -> u32 {
         })
         .sum()
 }
-fn corners(p: &Particle, c: &Config, layer: f32) -> ([[f32; 9]; 6], u8) {
+fn corners(
+    p: &Particle,
+    c: &Config,
+    layer: f32,
+    axes: Option<[[f32; 3]; 2]>,
+) -> ([[f32; 9]; 6], u8) {
     let mut ratio = p.remaining * p.inverse;
     let mut sizes = p.sizes;
     let color = match p.phase {
         1 => {
             ratio = 1. - ratio;
-            for s in &mut sizes {
-                *s *= ratio;
+            if c.splash.is_none() {
+                for s in &mut sizes {
+                    *s *= ratio;
+                }
             }
             packed_lerp(c.colors[0], c.colors[1], ratio)
         }
         2 => packed_lerp(c.colors[3], c.colors[2], ratio),
         _ => packed_lerp(c.colors[2], c.colors[1], ratio),
     };
+    let mut alpha = (color >> 24) as u8;
+    if c.splash.is_some() && p.phase != 0 && ratio < 0.98 {
+        let bits = (ratio + 49152.).to_bits();
+        alpha = if ratio <= 0.02 {
+            0
+        } else {
+            (1..=5)
+                .filter(|s| bits & (1 << (8 - s)) != 0)
+                .map(|s| alpha >> s)
+                .sum()
+        };
+    }
+    let [u, v] = axes.unwrap_or_else(|| {
+        [
+            c.matrix[..3].try_into().unwrap(),
+            c.matrix[4..7].try_into().unwrap(),
+        ]
+    });
     let signs = [[-1., -1.], [-1., 1.], [1., 1.], [1., -1.]];
     let uvs = [[0., 1.], [0., 0.], [1., 0.], [1., 1.]];
     let quad: [[f32; 9]; 4] = std::array::from_fn(|j| {
         let xyz: [f32; 3] = std::array::from_fn(|i| {
-            (p.position[i] + signs[j][0] * (sizes[0] * c.matrix[i]))
-                + signs[j][1] * (sizes[1] * c.matrix[4 + i])
+            (p.position[i] + signs[j][0] * (sizes[0] * u[i])) + signs[j][1] * (sizes[1] * v[i])
         });
         [
             xyz[0],
@@ -148,38 +204,57 @@ fn corners(p: &Particle, c: &Config, layer: f32) -> ([[f32; 9]; 6], u8) {
     });
     (
         [quad[0], quad[1], quad[2], quad[2], quad[3], quad[0]],
-        (color >> 24) as u8,
+        alpha,
     )
 }
 impl Rain {
     pub fn attach(scene: &mut Scene, bytes: &[u8]) -> io::Result<()> {
-        if bytes.len() != 4416
-            || &bytes[..8] != b"OJRAIN01"
-            || scene.width < 32
-            || scene.height < 32
-            || scene.rain.is_some()
+        Self::attach_effect(scene, bytes, false)
+    }
+    pub fn attach_effect(scene: &mut Scene, bytes: &[u8], splash: bool) -> io::Result<()> {
+        let (side, emitters_count, capacity_limit, magic) = if splash {
+            (64usize, 8usize, 20usize, b"OJSPLH01")
+        } else {
+            (32, 2, 150, b"OJRAIN01")
+        };
+        let record_size = if splash { 168 } else { 156 };
+        let pixels_start = 8 + emitters_count * record_size;
+        if bytes.len() != pixels_start + side * side * 4
+            || &bytes[..8] != magic
+            || scene.width < side as u32
+            || scene.height < side as u32
+            || (if splash {
+                scene.splashes.is_some()
+            } else {
+                scene.rain.is_some()
+            })
             || scene.layers >= 256
             || scene.ui_start != scene.layers
         {
             return Err(invalid("Invalid rain sidecar/scene extent"));
         }
         let mut emitters = Vec::new();
-        for n in 0..2 {
-            let start = 8 + n * 156;
+        for n in 0..emitters_count {
+            let start = 8 + n * record_size;
             let word = |i| u32::from_le_bytes(bytes[start + i..start + i + 4].try_into().unwrap());
             let matrix = std::array::from_fn(|i| f32::from_bits(word(i * 4)));
             let capacity = word(64) as usize;
             let values: [f32; 18] = std::array::from_fn(|i| f32::from_bits(word(68 + i * 4)));
             let colors = std::array::from_fn(|i| word(140 + i * 4));
-            if capacity != 150
+            let splash_controls =
+                splash.then(|| std::array::from_fn(|i| f32::from_bits(word(156 + i * 4))));
+            if splash_controls
+                .is_some_and(|v: [f32; 3]| v.iter().any(|x| !x.is_finite() || x.abs() > 10000.))
+                || capacity != capacity_limit
                 || matrix
                     .iter()
                     .chain(values.iter())
                     .any(|x| !x.is_finite() || x.abs() > 10000.)
                 || values[0] <= 0.
                 || values[0] > 1000.
-                || values[3] != 0.
-                || values[4] != 0.
+                || (!splash && (values[3] != 0. || values[4] != 0.))
+                || values[3] < 0.
+                || values[4] < values[3]
                 || values[1] < 0.
                 || values[2] < 0.
                 || [5, 7, 9, 14, 16]
@@ -195,6 +270,7 @@ impl Rain {
                     capacity,
                     values,
                     colors,
+                    splash: splash_controls,
                 },
                 particles: Vec::new(),
                 emission: 0.,
@@ -204,12 +280,16 @@ impl Rain {
         let first = scene.vertices.len() / 9;
         let mut rain = Self {
             first,
-            vertices: vec![0.; 1800 * 9],
-            alphas: vec![0; 1800],
+            vertices: vec![0.; emitters_count * capacity_limit * 6 * 9],
+            alphas: vec![0; emitters_count * capacity_limit * 6],
             emitters,
             seed: 1,
             pending: 0.,
             layer: scene.layers as f32,
+            billboard: [
+                scene.camera[3..6].try_into().unwrap(),
+                std::array::from_fn(|i| -scene.camera[6 + i]),
+            ],
         };
         rain.rebuild();
         scene.vertices.extend_from_slice(&rain.vertices);
@@ -217,25 +297,30 @@ impl Rain {
         scene
             .pixels
             .resize(base + (scene.width * scene.height * 4) as usize, 0);
-        for y in 0..32 {
+        for y in 0..side {
             let dst = base + y * scene.width as usize * 4;
-            scene.pixels[dst..dst + 128]
-                .copy_from_slice(&bytes[320 + y * 128..320 + (y + 1) * 128]);
+            scene.pixels[dst..dst + side * 4].copy_from_slice(
+                &bytes[pixels_start + y * side * 4..pixels_start + (y + 1) * side * 4],
+            );
         }
-        scene.texture_sizes.push([32, 32]);
+        scene.texture_sizes.push([side as u32, side as u32]);
         scene.layers += 1;
         scene.ui_start = scene.layers;
-        for n in 0..2 {
+        for n in 0..emitters_count {
             scene.draws.push(Draw {
-                first: (first + n * 900) as u32,
-                count: 900,
-                blend: 6,
-                vertex_fog: 4,
+                first: (first + n * capacity_limit * 6) as u32,
+                count: (capacity_limit * 6) as u32,
+                blend: if splash { 1 } else { 6 },
+                vertex_fog: if splash { 5 } else { 4 },
                 parameters: [1., 1., 0., 0., 1., 2., 0., 1.],
             });
             scene.uv_rates.push([0.; 2]);
         }
-        scene.rain = Some(rain);
+        if splash {
+            scene.splashes = Some(rain)
+        } else {
+            scene.rain = Some(rain)
+        }
         Ok(())
     }
     pub fn advance(&mut self, dt: f32) {
@@ -281,9 +366,14 @@ impl Rain {
         self.alphas.fill(0);
         for (n, e) in self.emitters.iter().enumerate() {
             for slot in 0..e.config.capacity {
-                let start = n * 900 + slot * 6;
+                let start = (n * e.config.capacity + slot) * 6;
                 if let Some(p) = e.particles.get(slot) {
-                    let (verts, alpha) = corners(p, &e.config, self.layer);
+                    let (verts, alpha) = corners(
+                        p,
+                        &e.config,
+                        self.layer,
+                        e.config.splash.map(|_| self.billboard),
+                    );
                     for (j, v) in verts.iter().enumerate() {
                         self.vertices[(start + j) * 9..(start + j + 1) * 9].copy_from_slice(v);
                     }
@@ -305,6 +395,7 @@ mod tests {
     use super::*;
     fn config() -> Config {
         Config {
+            splash: None,
             matrix: [
                 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
             ],
@@ -400,7 +491,7 @@ mod tests {
         p.sizes = [2., 4.];
         p.inverse = 1.;
         p.remaining = 0.5;
-        let (v, a) = corners(&p, &c, 7.);
+        let (v, a) = corners(&p, &c, 7., None);
         assert_eq!(&v[0][..5], &[9., 20., 32., 0., 1.]);
         assert_eq!(&v[2][..5], &[11., 20., 28., 1., 0.]);
         assert_eq!(a, 127);
@@ -500,7 +591,7 @@ mod tests {
         ] {
             p.phase = phase;
             p.remaining = remaining;
-            let (v, alpha) = corners(&p, &c, 1.);
+            let (v, alpha) = corners(&p, &c, 1., None);
             assert_eq!(alpha, (color >> 24) as u8);
             assert_eq!(v[0][5], (color & 255) as f32 / 255.);
         }
@@ -510,6 +601,20 @@ mod tests {
     fn native_captured_vertices() {
         let directory =
             std::env::var("OPENJADE_RAIN_CAPTURES").expect("Capture directory required");
+        check_draws(directory, None);
+    }
+    #[test]
+    #[ignore = "Requires OPENJADE_SPLASH_CAPTURES and OPENJADE_SPLASH_SCENE"]
+    fn native_splash_corners() {
+        let path = std::env::var("OPENJADE_SPLASH_SCENE").unwrap();
+        let scene = Scene::load(std::path::Path::new(&path)).unwrap();
+        check_draws(
+            std::env::var("OPENJADE_SPLASH_CAPTURES").unwrap(),
+            Some(scene.splashes.unwrap().billboard),
+        );
+    }
+    fn check_draws(directory: String, axes: Option<[[f32; 3]; 2]>) {
+        let mut max_error = 0_f32;
         let mut counts = [0usize; 3];
         let mut draws = 0;
         for entry in std::fs::read_dir(directory).unwrap() {
@@ -519,7 +624,11 @@ mod tests {
                     .file_name()
                     .unwrap()
                     .to_string_lossy()
-                    .starts_with("rain-v-")
+                    .starts_with(if axes.is_some() {
+                        "splash-draw-"
+                    } else {
+                        "rain-v-"
+                    })
             {
                 continue;
             }
@@ -530,12 +639,16 @@ mod tests {
             assert_eq!(particles.len() % 48, 0);
             assert_eq!(raw.len(), particles.len() / 48 * 216);
             let word = |b: &[u8], i: usize| u32::from_le_bytes(b[i..i + 4].try_into().unwrap());
-            assert_eq!(word(&d, 0x14), 0x08020241);
+            assert_eq!(
+                word(&d, 0x14),
+                if axes.is_some() { 0x20149 } else { 0x08020241 }
+            );
             assert_eq!(&d[0xf5..0xf7], &[0, 0]);
             let mut c = config();
             c.matrix = [
                 1., 0., 0., 0., 0., 0., -1., 0., 0., 1., 0., 0., 0., 0., 0., 1.,
             ];
+            c.splash = axes.map(|_| [0.2, 0.9, 0.8]);
             c.colors = [0xe8, 0xe0, 0xe4, 0xec].map(|i| word(&d, i));
             for (j, b) in particles.as_chunks::<48>().0.iter().enumerate() {
                 let phase = word(b, 0) as u8;
@@ -549,11 +662,15 @@ mod tests {
                     remaining: v[8],
                     sizes: v[9..].try_into().unwrap(),
                 };
-                let (vertices, alpha) = corners(&p, &c, 0.);
+                let (vertices, alpha) = corners(&p, &c, 0., axes);
                 for (k, v) in vertices.iter().enumerate() {
                     let start = (j * 6 + k) * 36;
                     for (i, value) in v.iter().take(3).enumerate() {
-                        assert_eq!(value.to_bits(), word(&raw, start + i * 4));
+                        let target = word(&raw, start + i * 4);
+                        if axes.is_none() {
+                            assert_eq!(value.to_bits(), target);
+                        }
+                        max_error = max_error.max((value - f32::from_bits(target)).abs());
                     }
                     for i in 0..2 {
                         assert_eq!(v[3 + i].to_bits(), word(&raw, start + 28 + i * 4));
@@ -568,8 +685,9 @@ mod tests {
             draws += 1;
         }
         assert!(counts.iter().all(|&n| n > 0));
+        assert!(max_error < 0.002, "{max_error}");
         println!(
-            "Native rain: {draws} draws, {counts:?} particles by phase; {} corners matched exactly",
+            "Native capture, max XYZ error {max_error}: {draws} draws, {counts:?} particles by phase; {} corners checked",
             counts.iter().sum::<usize>() * 6
         );
     }

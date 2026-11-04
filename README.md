@@ -55,7 +55,7 @@ and multi-pass light-fixture materials:
 - Supported fog and flame-texture offsets
 animate in real time.
 - Seven palms now move using their decoded vertex deformation.
-- Two rain emitters use decoded parameters and verified particle geometry, colors and blending; timing remains under comparison.
+- Eight splash emitters animate alongside the two falling-rain emitters. The rain uses decoded parameters and verified particle geometry, colors and blending; timing remains under comparison.
 - A measured scene-blur effect softens the 3D background while keeping the menu interface sharp.
 - Scene textures retain their decoded dimensions; filtering and generated mipmaps can be compared in the viewer.
 - Lighting, transparency ordering and visual fidelity remain under investigation; this is not a faithful recreation yet.

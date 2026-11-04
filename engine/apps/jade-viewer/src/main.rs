@@ -521,6 +521,22 @@ fn main() -> std::process::ExitCode {
             scene.color_pipeline
         );
     }
+    if let Some(i) = args.iter().position(|s| s == "--no-splashes") {
+        if let Some(scene) = &mut scene {
+            scene.splashes = None;
+        }
+        args.remove(i);
+    }
+    if let Some(scene) = &scene {
+        println!(
+            "Menu splashes: {}",
+            if scene.splashes.is_some() {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+    }
     if let Some(i) = args.iter().position(|s| s == "--no-rain") {
         if let Some(scene) = &mut scene {
             scene.rain = None;
@@ -656,7 +672,7 @@ fn main() -> std::process::ExitCode {
         None
     };
     if args.iter().any(|s| s == "--help" || s == "-h") {
-        println!("jade-viewer [--scene PATH] [--menu BUNDLE] [--texture-filter nearest|linear|trilinear] [--color-pipeline srgb|legacy-unorm] [--gamma 0..100 | --settings PATH] [--no-menu-blur] [--no-menu-additive] [--no-rain] [--validation] [--smoke]\njade-viewer --probe [--validation]\nDefault: diagnostic panel. --scene: decoded research geometry with depth and fixed camera. Smoke resizes twice and exits after 80 frames.");
+        println!("jade-viewer [--scene PATH] [--menu BUNDLE] [--texture-filter nearest|linear|trilinear] [--color-pipeline srgb|legacy-unorm] [--gamma 0..100 | --settings PATH] [--no-menu-blur] [--no-menu-additive] [--no-rain] [--no-splashes] [--validation] [--smoke]\njade-viewer --probe [--validation]\nDefault: diagnostic panel. --scene: decoded research geometry with depth and fixed camera. Smoke resizes twice and exits after 80 frames.");
         return std::process::ExitCode::SUCCESS;
     }
     if args

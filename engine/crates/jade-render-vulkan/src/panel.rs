@@ -151,7 +151,10 @@ impl Panel {
                 .collect();
             let alpha_offset = bytes.len() + 65536 * 36;
             bytes.resize(alpha_offset + scene.vertices.len() / 9 + 65536, 255);
-            if let Some(rain) = &scene.rain {
+            for rain in [scene.rain.as_ref(), scene.splashes.as_ref()]
+                .into_iter()
+                .flatten()
+            {
                 bytes[alpha_offset + rain.first..alpha_offset + rain.first + rain.alphas.len()]
                     .copy_from_slice(&rain.alphas);
             }
@@ -791,7 +794,7 @@ impl Panel {
             f64,
             &[jade_assets::palms::PalmVertex],
             &[jade_assets::rido2::Curtain],
-            Option<&jade_assets::rain::Rain>,
+            [Option<&jade_assets::rain::Rain>; 2],
         ),
     ) -> Result<(), vk::Result> {
         let (elapsed, palms, curtain, rain) = animation;
@@ -808,7 +811,11 @@ impl Panel {
         {
             return Err(vk::Result::ERROR_UNKNOWN);
         }
-        if !ui.is_empty() || !palms.is_empty() || !curtain.is_empty() || rain.is_some() {
+        if !ui.is_empty()
+            || !palms.is_empty()
+            || !curtain.is_empty()
+            || rain.iter().any(Option::is_some)
+        {
             // Presenter waited for the sole in-flight frame before this host write.
             let offset = self.vertex_count as u64 * 36;
             let ptr = self.device.map_memory(
@@ -817,7 +824,7 @@ impl Panel {
                 vk::WHOLE_SIZE,
                 vk::MemoryMapFlags::empty(),
             )?;
-            if let Some(rain) = rain {
+            for rain in rain.into_iter().flatten() {
                 std::ptr::copy_nonoverlapping(
                     rain.vertices.as_ptr(),
                     ptr.cast::<f32>().add(rain.first * 9),

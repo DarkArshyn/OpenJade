@@ -36,6 +36,7 @@ pub mod rain;
 pub mod rido2;
 pub struct Scene {
     pub rain: Option<rain::Rain>,
+    pub splashes: Option<rain::Rain>,
     pub glow: Option<(u32, u8)>,
     pub menu_additive: bool,
     pub trunk_mips: Option<native_mips::TrunkMips>,
@@ -154,6 +155,15 @@ impl Scene {
                 let mut bytes = Vec::new();
                 file.take(4417).read_to_end(&mut bytes)?;
                 rain::Rain::attach(&mut scene, &bytes)?;
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        match std::fs::File::open(path.with_extension("splash")) {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                file.take(17737).read_to_end(&mut bytes)?;
+                rain::Rain::attach_effect(&mut scene, &bytes, true)?;
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),
@@ -354,6 +364,7 @@ impl Scene {
             color_pipeline: ColorPipeline::default(),
             menu_blur: true,
             rain: None,
+            splashes: None,
             glow: None,
             menu_additive: true,
             vertices,
@@ -585,6 +596,7 @@ mod native_texture_tests {
             color_pipeline: ColorPipeline::default(),
             menu_blur: true,
             rain: None,
+            splashes: None,
             glow: None,
             menu_additive: true,
         };

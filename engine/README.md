@@ -223,7 +223,7 @@ New exports also carry `menu.rain`, which adds two native rain emitters with a
 32x32 texture, three-phase lifetime and additive quads. The Rust corner/UV/color
 calculation matches 4,602 captured native corners. A private seed and fixed 60 Hz
 research scheduler make tests repeatable; synchronization with the original game
-is not established. Birds, insects, splashes and dynamic fog particles remain absent.
+is not established. Eight splash emitters are supported with a menu.splash sidecar. Use --no-splashes for an isolated comparison. Birds, insects and dynamic fog particles remain open.
 
 ```powershell
 cargo run -p jade-viewer -- --scene ../reports/menu-rain-20261103/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --color-pipeline legacy-unorm --validation

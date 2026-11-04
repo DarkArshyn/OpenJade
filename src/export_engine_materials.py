@@ -207,6 +207,7 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False, animate_u
     if palm_source is not None:
         from export_rain_controls import export_rain
         (output/'menu.rain').write_bytes(export_rain(palm_source))
+        (output/'menu.splash').write_bytes(export_rain(palm_source,splashes=True))
         from export_rido2 import export_rido2
         for draw, entry in zip(draws, audit):
             if draw[2] == 7:

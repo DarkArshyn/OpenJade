@@ -1508,6 +1508,7 @@ mod tests {
             leaf: None,
             menu_blur: true,
             rain: None,
+            splashes: None,
             glow: None,
             menu_additive: true,
             trunk_mips: None,
