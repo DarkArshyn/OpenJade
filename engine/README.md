@@ -223,7 +223,7 @@ New exports also carry `menu.rain`, which adds two native rain emitters with a
 32x32 texture, three-phase lifetime and additive quads. The Rust corner/UV/color
 calculation matches 4,602 captured native corners. A private seed and fixed 60 Hz
 research scheduler make tests repeatable; synchronization with the original game
-is not established. Eight splash emitters are supported with a menu.splash sidecar. Use --no-splashes for an isolated comparison. Birds, insects and dynamic fog particles remain open.
+is not established. Eight splash emitters are supported with a menu.splash sidecar. Use --no-splashes for an isolated comparison. Two bird particle emitters and two fly swarms are supported in the [fauna scene](../docs/observations/2026-11-04-menu-birds-and-flies.md). The optional [menu.flight sidecar](../docs/observations/2026-11-04-menu-mesh-flight.md) adds the three waypoint-controlled bird meshes and their wing motion. The optional [menu.pollen sidecar](../docs/observations/2026-11-04-vulkan-pollen.md) adds the drifting points of light. The [vegetation scene](../docs/observations/2026-11-04-menu-vegetation.md) animates three further plants and the hanging vine. Dynamic fog particles remain open.
 
 ```powershell
 cargo run -p jade-viewer -- --scene ../reports/menu-rain-20261103/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --color-pipeline legacy-unorm --validation

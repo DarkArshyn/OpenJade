@@ -13,12 +13,15 @@ pub struct PalmVertex {
 }
 
 pub(crate) fn wave(angle: f32, shift: usize) -> f32 {
+    let index = (f64::from(angle) * f64::from(f32::from_bits(0x4322f983))).round_ties_even() as i64;
+    sine_index((index as usize).wrapping_add(shift))
+}
+pub(crate) fn sine_index(index: usize) -> f32 {
     static TABLE: OnceLock<[f32; 1024]> = OnceLock::new();
     let table = TABLE.get_or_init(|| {
         std::array::from_fn(|i| (i as f64 * f64::from(std::f32::consts::TAU / 1024.)).sin() as f32)
     });
-    let index = (f64::from(angle) * f64::from(f32::from_bits(0x4322f983))).round_ties_even() as i64;
-    table[(index as usize).wrapping_add(shift) & 1023]
+    table[index & 1023]
 }
 
 impl PalmVertex {

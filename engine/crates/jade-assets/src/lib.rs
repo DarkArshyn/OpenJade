@@ -30,6 +30,7 @@ pub enum ColorPipeline {
     LegacyUnorm,
 }
 pub mod curtain_field;
+pub mod flight;
 pub mod native_mips;
 pub mod palms;
 pub mod rain;
@@ -37,6 +38,9 @@ pub mod rido2;
 pub struct Scene {
     pub rain: Option<rain::Rain>,
     pub splashes: Option<rain::Rain>,
+    pub birds: Option<rain::Rain>,
+    pub pollen: Option<rain::Rain>,
+    pub flight: Option<flight::Flight>,
     pub glow: Option<(u32, u8)>,
     pub menu_additive: bool,
     pub trunk_mips: Option<native_mips::TrunkMips>,
@@ -163,7 +167,34 @@ impl Scene {
             Ok(file) => {
                 let mut bytes = Vec::new();
                 file.take(17737).read_to_end(&mut bytes)?;
-                rain::Rain::attach_effect(&mut scene, &bytes, true)?;
+                rain::Rain::attach_effect(&mut scene, &bytes, rain::Effect::Splash)?;
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        match std::fs::File::open(path.with_extension("birds")) {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                file.take(4425).read_to_end(&mut bytes)?;
+                rain::Rain::attach_effect(&mut scene, &bytes, rain::Effect::Birds)?;
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        match std::fs::File::open(path.with_extension("flight")) {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                file.take(6101).read_to_end(&mut bytes)?;
+                flight::Flight::attach(&mut scene, &bytes)?;
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        match std::fs::File::open(path.with_extension("pollen")) {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                file.take(16577).read_to_end(&mut bytes)?;
+                rain::Rain::attach_effect(&mut scene, &bytes, rain::Effect::Pollen)?;
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),
@@ -318,7 +349,7 @@ impl Scene {
                         .is_none_or(|end| end > vertices.len() as u32 / 9)
                     || !matches!(
                         (blend, write),
-                        (0, 1 | 3 | 5) | (7, 0 | 2 | 4) | (1, 0) | (6, 0)
+                        (0, 1 | 3 | 5) | (7, 0 | 2 | 4) | (1, 0 | 2 | 4) | (6, 0)
                     )
                     || !parameters.iter().all(|f| f.is_finite())
                     || !(0.0..=1.0).contains(&parameters[4])
@@ -365,6 +396,9 @@ impl Scene {
             menu_blur: true,
             rain: None,
             splashes: None,
+            birds: None,
+            pollen: None,
+            flight: None,
             glow: None,
             menu_additive: true,
             vertices,
@@ -597,6 +631,9 @@ mod native_texture_tests {
             menu_blur: true,
             rain: None,
             splashes: None,
+            birds: None,
+            pollen: None,
+            flight: None,
             glow: None,
             menu_additive: true,
         };

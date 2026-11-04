@@ -16,6 +16,14 @@ use jade_assets::{Draw, Scene};
 use std::io::Cursor;
 use texture_resource::Texture;
 
+pub(super) struct AnimationFrame<'a> {
+    pub elapsed: f64,
+    pub palms: &'a [jade_assets::palms::PalmVertex],
+    pub curtain: &'a [jade_assets::rido2::Curtain],
+    pub rain: [Option<&'a jade_assets::rain::Rain>; 4],
+    pub flight: Option<&'a jade_assets::flight::Flight>,
+}
+
 pub(super) struct Panel {
     device: ash::Device,
     gamma: Option<GammaPass>,
@@ -151,9 +159,14 @@ impl Panel {
                 .collect();
             let alpha_offset = bytes.len() + 65536 * 36;
             bytes.resize(alpha_offset + scene.vertices.len() / 9 + 65536, 255);
-            for rain in [scene.rain.as_ref(), scene.splashes.as_ref()]
-                .into_iter()
-                .flatten()
+            for rain in [
+                scene.rain.as_ref(),
+                scene.splashes.as_ref(),
+                scene.birds.as_ref(),
+                scene.pollen.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
             {
                 bytes[alpha_offset + rain.first..alpha_offset + rain.first + rain.alphas.len()]
                     .copy_from_slice(&rain.alphas);
@@ -790,14 +803,15 @@ impl Panel {
         menu_frame: Option<([f32; 20], Option<u32>)>,
         gamma: Option<u8>,
         ui: &[f32],
-        animation: (
-            f64,
-            &[jade_assets::palms::PalmVertex],
-            &[jade_assets::rido2::Curtain],
-            [Option<&jade_assets::rain::Rain>; 2],
-        ),
+        animation: AnimationFrame,
     ) -> Result<(), vk::Result> {
-        let (elapsed, palms, curtain, rain) = animation;
+        let AnimationFrame {
+            elapsed,
+            palms,
+            curtain,
+            rain,
+            flight,
+        } = animation;
         self.gamma.as_ref().unwrap().update(gamma)?;
         if ui.len() > 65536 * 9
             || !ui.len().is_multiple_of(54)
@@ -815,6 +829,7 @@ impl Panel {
             || !palms.is_empty()
             || !curtain.is_empty()
             || rain.iter().any(Option::is_some)
+            || flight.is_some()
         {
             // Presenter waited for the sole in-flight frame before this host write.
             let offset = self.vertex_count as u64 * 36;
@@ -836,6 +851,15 @@ impl Panel {
                     ptr.cast::<u8>().add(alpha_offset),
                     rain.alphas.len(),
                 );
+            }
+            if let Some(flight) = flight {
+                for (i, xyz) in flight.positions.iter().enumerate() {
+                    std::ptr::copy_nonoverlapping(
+                        xyz.as_ptr(),
+                        ptr.cast::<f32>().add((flight.first + i) * 9),
+                        3,
+                    );
+                }
             }
             for cloth in curtain {
                 for (index, xyz) in cloth.corners() {

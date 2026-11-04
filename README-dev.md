@@ -2,7 +2,7 @@
 
 [Project overview](README.md)
 
-Current implementation status: **2026-11-03**. Original game inputs remain read-only.
+Current implementation status: **2026-11-04**. Original game inputs remain read-only.
 
 Latest completed work: original logo/cursor pixel dimensions, linear UI filtering
 and resolution-aware selection among twelve MFT variants. Detailed menus are composed and controlled directly in
@@ -51,7 +51,7 @@ is `game/TSoT-GOG`; no path is a bundled dependency or permission to redistribut
 | 2. Compression | Trace stored blocks and validate decompression | Recognized POP envelopes; [3,302 resources differentially validated](docs/observations/2026-10-13-lzo.md) |
 | 3. Menu textures and fonts | Decode required DDS/MFT resources and verify interpretation | DDS checked; MFT atlas/metrics used for experimental text. Exact layout/style remains unverified |
 | 4. Screen behavior | Document layout, colors, order and dependencies against original observations | Partial: MGM evidence and seventeen 800x600 screenshots; some behavior remains reconstructed |
-| 5. First rendered screen | Render reconstructed UI and original resources with independent code | Native detailed menu UI overlays 48 decoded 3D objects. Native scene texture dimensions, filtering/mipmap and color-pipeline comparisons, plus post-composition gamma are implemented. Lighting/fog fidelity and high-resolution UI remain unfinished |
+| 5. First rendered screen | Render reconstructed UI and original resources with independent code | Native detailed menu UI overlays 50 decoded 3D objects. Native scene texture dimensions, filtering/mipmap and color-pipeline comparisons, plus post-composition gamma are implemented. Lighting/fog fidelity and high-resolution UI remain unfinished |
 | 6. Interactive menu | Reproduce selection, input, navigation and transitions | Native detailed screens, profile creation/selection/deletion, keyboard-binding capture, settings/quit confirmations and Camera02 playback. Gamma, filtering, window resolution and V-Sync affect the viewer; committed preferences/profiles persist in an OpenJade file. Unsupported systems remain disabled; binding storage is not gameplay input |
 | 7. Game systems | Implement scene/object/animation/collision/audio/gameplay with tests | Early rendering runtime: depth, textures, fog/fixture passes, scene blur, partial masked additive composition, explicit color paths and gamma; baked Camera02 playback, palm/curtain deformation and two native rain emitters. General animation, remaining particle effects, collision, audio, actors and gameplay are unimplemented. Native lighting fidelity and rain synchronization remain unresolved |
 | 8. Native ports | Build and validate Linux/macOS | Not started |
@@ -276,6 +276,8 @@ The separate additive chain is now partially implemented below; dynamic fog part
 
 ### Menu effects: inventory and native rain
 
+The [luminous point capture](docs/observations/2026-11-04-menu-luminous-points.md) separates the two fly meshes from the additive pollen emitter and identifies four vegetation modifier candidates. [GOG vegetation captures](docs/observations/2026-11-04-menu-vegetation.md) verify all four in the native viewer, including the upper-right vine silhouette. The [native pollen integration](docs/observations/2026-11-04-vulkan-pollen.md) reproduces birth, translation, rotation and packed colors in the viewer.
+
 The [splash emitter investigation](docs/observations/2026-11-04-splash-emitter-link.md) resolves a reference to Cam_Manager.gao and separates isolated spawn behavior from live activation.
 
 The [rain, birds and flies inventory](docs/observations/2026-11-03-menu-effects-inventory.md)
@@ -302,7 +304,7 @@ checks at 0, 1 and 2 seconds are stable and error-free; rain changes the image a
 1 and 2 seconds. An 80-frame native-menu resize smoke test also passes.
 This validates integration, not full visual equivalence: a private seed and 60 Hz
 research clock are used, original shared RNG/time synchronization is unresolved,
-and bird, insect and dynamic fog particles remain open. Eight native splash emitters now run alongside rain using the optional menu.splash file. The [capture and runtime checks](docs/observations/2026-11-04-splash-emitter-link.md) cover their birth vectors, phase colors, oriented quads and draw state. The fixed-menu splash fog matches the measured GOG InvertFogRange=0 color and vertex-depth curve. Isolated native draw replays changed RGB by at most 2/255 with this setting and 51/255 with the inverted setting.
+and dynamic fog particles remain open. [Menu birds and flies](docs/observations/2026-11-04-menu-birds-and-flies.md) now render two native bird particle emitters and two fly swarms. The [three mesh birds](docs/observations/2026-11-04-menu-mesh-flight.md) also run in Vulkan. Their native waypoint boxes and weighted local wing deformation have been checked against GOG draws over multiple laps. Eight native splash emitters now run alongside rain using the optional menu.splash file. The [capture and runtime checks](docs/observations/2026-11-04-splash-emitter-link.md) cover their birth vectors, phase colors, oriented quads and draw state. The fixed-menu splash fog matches the measured GOG InvertFogRange=0 color and vertex-depth curve. Isolated native draw replays changed RGB by at most 2/255 with this setting and 51/255 with the inverted setting.
 
 Regenerate a local package with `export_engine_materials.py --palm-source` to add
 the rain sidecar. Existing packages without it retain their previous behavior.

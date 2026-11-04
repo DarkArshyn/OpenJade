@@ -50,11 +50,11 @@ Camera02 transition toward the balcony, where the camera stops.
 
 There is no controllable Prince, cutscene playback or level loading.
 
-The scenery includes 48 decoded objects, textures, depth testing, three fog panels
+The scenery includes 50 decoded objects, textures, depth testing, three fog panels
 and multi-pass light-fixture materials:
 - Supported fog and flame-texture offsets
 animate in real time.
-- Seven palms now move using their decoded vertex deformation.
+- Seven palms, three additional plants and the hanging vine move using their decoded vertex deformation. Three mesh birds follow their waypoint loops and flap their wings. Two bird particle emitters and two fly swarms also animate in the menu. Drifting points of light come from a separate pollen emitter.
 - Eight splash emitters animate alongside the two falling-rain emitters. The rain uses decoded parameters and verified particle geometry, colors and blending; timing remains under comparison.
 - A measured scene-blur effect softens the 3D background while keeping the menu interface sharp.
 - Scene textures retain their decoded dimensions; filtering and generated mipmaps can be compared in the viewer.

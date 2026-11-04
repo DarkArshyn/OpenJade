@@ -3,7 +3,7 @@
 mod panel;
 use ash::{vk, Entry};
 use jade_assets::Scene;
-use panel::Panel;
+use panel::{AnimationFrame, Panel};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
     ffi::CStr,
@@ -415,17 +415,21 @@ impl Presenter {
             d.reset_command_buffer(self.command, vk::CommandBufferResetFlags::empty())?;
             d.begin_command_buffer(self.command, &vk::CommandBufferBeginInfo::default())?;
             let now = std::time::Instant::now();
-            let (palms, curtain, mut rain, mut splash) =
-                self.scene
-                    .as_mut()
-                    .map_or((&mut [][..], &mut [][..], None, None), |s| {
+            let (palms, curtain, mut rain, mut splash, mut birds, mut pollen, mut flight) =
+                self.scene.as_mut().map_or(
+                    (&mut [][..], &mut [][..], None, None, None, None, None),
+                    |s| {
                         (
                             s.palms.as_mut_slice(),
                             s.curtains.as_mut_slice(),
                             s.rain.as_mut(),
                             s.splashes.as_mut(),
+                            s.birds.as_mut(),
+                            s.pollen.as_mut(),
+                            s.flight.as_mut(),
                         )
-                    });
+                    },
+                );
             let last = self.palm_frame.replace(now);
             let step = match self.fixed_seconds {
                 Some(t) => last.is_none().then_some(t),
@@ -444,14 +448,28 @@ impl Presenter {
             if let (Some(dt), Some(rain)) = (step, rain.as_deref_mut()) {
                 rain.advance(dt);
             }
-            if let Some(splash) = splash.as_deref_mut() {
+            for (particles, live_clock) in [
+                (splash.as_deref_mut(), false),
+                (birds.as_deref_mut(), false),
+                (pollen.as_deref_mut(), self.fixed_seconds.is_none()),
+            ]
+            .into_iter()
+            .filter_map(|(particles, live)| particles.map(|p| (p, live)))
+            {
                 if let Some((camera, _)) = self.menu_frame {
-                    splash.billboard = [
+                    particles.billboard = [
                         camera[4..7].try_into().unwrap(),
                         std::array::from_fn(|i| -camera[8 + i]),
                     ];
                 }
-                splash.advance(step.unwrap_or(0.));
+                if live_clock {
+                    particles.advance_frame(step.unwrap_or(0.));
+                } else {
+                    particles.advance(step.unwrap_or(0.));
+                }
+            }
+            if let (Some(dt), Some(flight)) = (step, flight.as_deref_mut()) {
+                flight.advance(dt);
             }
             self.panel.as_ref().unwrap().draw(
                 self.command,
@@ -459,14 +477,21 @@ impl Presenter {
                 self.menu_frame,
                 self.gamma,
                 &self.native_ui,
-                (
-                    self.fixed_seconds
+                AnimationFrame {
+                    elapsed: self
+                        .fixed_seconds
                         .map(f64::from)
                         .unwrap_or_else(|| self.material_clock.elapsed().as_secs_f64()),
                     palms,
                     curtain,
-                    [rain.as_deref(), splash.as_deref()],
-                ),
+                    rain: [
+                        rain.as_deref(),
+                        splash.as_deref(),
+                        birds.as_deref(),
+                        pollen.as_deref(),
+                    ],
+                    flight: flight.as_deref(),
+                },
             )?;
             d.end_command_buffer(self.command)?;
             let wait = [self.acquired];

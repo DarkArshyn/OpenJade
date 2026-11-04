@@ -93,6 +93,9 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False, animate_u
                 if len(pair)!=2 or not(0<pair[0]<=len(vertices) and 0<pair[1]<=len(uvs)): raise ValueError('Invalid OBJ index')
                 v=vertices[pair[0]-1];uv=uvs[pair[1]-1]
                 current['vertices'].append([*v[:3],uv[0],1-uv[1],*v[3:]])
+    if palm_source is not None:
+        from menu_flies import append_flies
+        append_flies(palm_source,source,materials,accepted,groups)
     counts={name:sum(len(g['vertices'])//3 for g in groups if g['name']==name) for name in accepted}
     if any(counts[name]!=row['triangles'] for name,row in accepted.items()): raise ValueError('Triangle count mismatch')
     # Keep object/group pass order. Fog is deferred and sorted by object-center view depth.
@@ -121,7 +124,10 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False, animate_u
                           and color['mode'] == 0 and not material['stages'])
         verified_fog = verified_fog or verified_leaf
         rates=[]
-        if row['fog_states']:
+        if 'fly_uv' in row:
+            scale,rate=row['fly_uv'];rates=[rate]
+            passes=[(f'material-{slot}.png',1,[*scale,*[(time*r)%1 for r in rate],1.,1.,0.,1.])]
+        elif row['fog_states']:
             if len(row['fog_states'])!=1: raise ValueError('Ambiguous fog state')
             state=row['fog_states'][0]
             if state['flags']!='0x40014205': raise ValueError('Unsupported fog flags')
@@ -158,9 +164,9 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False, animate_u
                 params[6:8] = [150 / 255, 1.]
             if verified_trunk and palm_source is not None:
                 params[7] = 1.
-            flags = (0 if mode or leaf_alpha else 1) | (fog_flags if verified_fog and mode == 0 else 0)
+            flags = (0 if mode or leaf_alpha else 1) | (fog_flags if (verified_fog and mode == 0) or "fly_uv" in row else 0)
             draws.append((first,len(g['vertices']),7 if leaf_alpha else mode,flags,params))
-            audit.append(dict(object=g['name'],material=material['key'],texture=image,blend=7 if leaf_alpha else mode,depth_write=mode==0 and not leaf_alpha,vertex_fog=masonry_fog if verified_fog and mode == 0 else 'off',
+            audit.append(dict(object=g['name'],material=material['key'],texture=image,blend=7 if leaf_alpha else mode,depth_write=mode==0 and not leaf_alpha,vertex_fog=masonry_fog if (verified_fog and mode == 0) or 'fly_uv' in row else 'off',
                               uv_rate=rate if animate_uv else [0.,0.],parameters=params,color_mode=color['mode'],color_status='GOG D3D9 texture x diffuse x2' if verified_masonry or verified_leaf or verified_trunk else 'verified constant x2' if color['mode']==2 else ('balcony direct-color x2 hypothesis; runtime path unverified' if balcony_gain(g['name'],color['mode'],material['stages'],balcony_modulate2x)==2 else 'exported vertex colors; active runtime lighting unresolved')))
     # Opaque passes establish depth first. Sort transparent passes back to front;
     # stable ordering keeps the stages of a single fixture in their original order.
@@ -208,6 +214,10 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False, animate_u
         from export_rain_controls import export_rain
         (output/'menu.rain').write_bytes(export_rain(palm_source))
         (output/'menu.splash').write_bytes(export_rain(palm_source,splashes=True))
+        (output/'menu.pollen').write_bytes(export_rain(palm_source,pollen=True))
+        (output/'menu.birds').write_bytes(export_rain(palm_source,birds=True))
+        from export_mesh_flight import export_mesh_flight
+        (output/'menu.flight').write_bytes(export_mesh_flight(palm_source))
         from export_rido2 import export_rido2
         for draw, entry in zip(draws, audit):
             if draw[2] == 7:
@@ -234,7 +244,7 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False, animate_u
             control = export_rido2(palm_source, expanded, draws, audit, instance=instance)
             (output/f'menu.rido{instance}').write_bytes(control)
     (output/'menu.ojscene').write_bytes(blob)
-    manifest=dict(rain_sidecar="menu.rain" if palm_source is not None else None, rain_runtime_reserved_triangles=600 if palm_source is not None else 0, rain_runtime_extra_texture_layers=1 if palm_source is not None else 0, palm_vertices=palm_counts,version=5 if palm_source is not None else 4 if animate_uv else 3,animate_uv=animate_uv,source_sha256=report['source_sha256'],source_obj_sha256=hashlib.sha256((source/'scene.obj').read_bytes()).hexdigest(),
+    manifest=dict(pollen_sidecar="menu.pollen" if palm_source is not None else None, pollen_runtime_reserved_triangles=40 if palm_source is not None else 0, flight_sidecar="menu.flight" if palm_source is not None else None, flight_runtime_triangles=66 if palm_source is not None else 0, bird_sidecar="menu.birds" if palm_source is not None else None, bird_runtime_reserved_triangles=30 if palm_source is not None else 0, splash_runtime_reserved_triangles=320 if palm_source is not None else 0, rain_sidecar="menu.rain" if palm_source is not None else None, rain_runtime_reserved_triangles=600 if palm_source is not None else 0, rain_runtime_extra_texture_layers=1 if palm_source is not None else 0, palm_vertices=palm_counts,version=5 if palm_source is not None else 4 if animate_uv else 3,animate_uv=animate_uv,source_sha256=report['source_sha256'],source_obj_sha256=hashlib.sha256((source/'scene.obj').read_bytes()).hexdigest(),
         source_report_sha256=hashlib.sha256((source/'scene.json').read_bytes()).hexdigest(),camera_sha256=hashlib.sha256(camera.read_bytes()).hexdigest(),
         balcony_modulate2x_diagnostic=balcony_modulate2x,package_sha256=hashlib.sha256(blob).hexdigest(),object_count=len(counts),objects=counts,geometry_triangles=sum(counts.values()),
         submitted_triangles=len(expanded)//3,texture_layers=len(image_names),textures=textures,draws=audit,effective_time=time,

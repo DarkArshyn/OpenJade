@@ -521,6 +521,62 @@ fn main() -> std::process::ExitCode {
             scene.color_pipeline
         );
     }
+    if let Some(i) = args.iter().position(|s| s == "--no-flight") {
+        if let Some(scene) = &mut scene {
+            if let Some(flight) = scene.flight.take() {
+                // Collapse the reserved corners; retain their original layer binding.
+                for vertex in scene.vertices[flight.first * 9..(flight.first + 198) * 9]
+                    .as_chunks_mut::<9>()
+                    .0
+                {
+                    vertex[..3].fill(0.);
+                }
+            }
+        }
+        args.remove(i);
+    }
+    if let Some(scene) = &scene {
+        println!(
+            "Menu flight: {}",
+            if scene.flight.is_some() {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+    }
+    if let Some(i) = args.iter().position(|s| s == "--no-pollen") {
+        if let Some(scene) = &mut scene {
+            scene.pollen = None;
+        }
+        args.remove(i);
+    }
+    if let Some(scene) = &scene {
+        println!(
+            "Menu pollen: {}",
+            if scene.pollen.is_some() {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+    }
+    if let Some(i) = args.iter().position(|s| s == "--no-birds") {
+        if let Some(scene) = &mut scene {
+            scene.birds = None;
+        }
+        args.remove(i);
+    }
+    if let Some(scene) = &scene {
+        println!(
+            "Menu birds: {}",
+            if scene.birds.is_some() {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+    }
     if let Some(i) = args.iter().position(|s| s == "--no-splashes") {
         if let Some(scene) = &mut scene {
             scene.splashes = None;
@@ -672,7 +728,7 @@ fn main() -> std::process::ExitCode {
         None
     };
     if args.iter().any(|s| s == "--help" || s == "-h") {
-        println!("jade-viewer [--scene PATH] [--menu BUNDLE] [--texture-filter nearest|linear|trilinear] [--color-pipeline srgb|legacy-unorm] [--gamma 0..100 | --settings PATH] [--no-menu-blur] [--no-menu-additive] [--no-rain] [--no-splashes] [--validation] [--smoke]\njade-viewer --probe [--validation]\nDefault: diagnostic panel. --scene: decoded research geometry with depth and fixed camera. Smoke resizes twice and exits after 80 frames.");
+        println!("jade-viewer [--scene PATH] [--menu BUNDLE] [--texture-filter nearest|linear|trilinear] [--color-pipeline srgb|legacy-unorm] [--gamma 0..100 | --settings PATH] [--no-menu-blur] [--no-menu-additive] [--no-rain] [--no-splashes] [--no-birds] [--no-pollen] [--no-flight] [--validation] [--smoke]\njade-viewer --probe [--validation]\nDefault: diagnostic panel. --scene: decoded research geometry with depth and fixed camera. Smoke resizes twice and exits after 80 frames.");
         return std::process::ExitCode::SUCCESS;
     }
     if args

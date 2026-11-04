@@ -13,10 +13,15 @@ struct Config {
     values: [f32; 18],
     colors: [u32; 4],
     splash: Option<[f32; 3]>,
+    bird_delay: Option<u8>,
+    pollen: Option<[f32; 7]>,
 }
 #[derive(Clone, Debug)]
 struct Particle {
     phase: u8,
+    tile_step: u8,
+    tile_clock: u8,
+    rotation: u32,
     position: [f32; 3],
     velocity: [f32; 3],
     inverse: f32,
@@ -49,13 +54,55 @@ fn sample(seed: &mut u32, a: f32, b: f32) -> f32 {
 }
 fn spawn(c: &Config, seed: &mut u32) -> Particle {
     let v = &c.values;
+    if let Some([offset, spread_a, spread_b, angle_min, angle_max, spin_min, spin_max]) = c.pollen {
+        let remaining = sample(seed, v[7], v[8]);
+        let sizes = [sample(seed, v[14], v[15]), sample(seed, v[16], v[17])];
+        let x = sample(seed, -v[1], v[1]);
+        let z = sample(seed, -v[2], v[2]);
+        let a = sample(seed, -spread_a, spread_a);
+        let b = sample(seed, -spread_a, spread_b);
+        let speed = sample(seed, v[3], v[4]);
+        use crate::palms::wave;
+        let local = [
+            speed * wave(a, 0) * wave(b, 256),
+            -speed * wave(a, 256) * wave(b, 256),
+            speed * wave(b, 0),
+        ];
+        let m = &c.matrix;
+        let position =
+            std::array::from_fn(|i| ((m[12 + i] + m[i] * x) + m[8 + i] * z) - offset * m[4 + i]);
+        let velocity =
+            std::array::from_fn(|i| local[0] * m[i] + local[1] * m[4 + i] + local[2] * m[8 + i]);
+        let angle = (sample(seed, angle_min, angle_max) * f32::from_bits(0x4322f983)) as i32;
+        let spin = (sample(seed, spin_min, spin_max) * 10430.378) as i32;
+        let rotation = ((angle as u32) << 22)
+            | (spin.unsigned_abs() & 0x7fff)
+            | if spin < 0 { 0x8000 } else { 0 };
+        return Particle {
+            phase: 0,
+            tile_step: 0,
+            tile_clock: 0,
+            rotation,
+            position,
+            velocity,
+            remaining,
+            inverse: 1. / remaining,
+            sizes,
+        };
+    }
     let mut remaining = sample(seed, v[5], v[6]);
     let mut phase = 1;
     if remaining == 0. {
         remaining = sample(seed, v[7], v[8]);
         phase = 0;
     }
-    let sizes = [sample(seed, v[14], v[15]), sample(seed, v[16], v[17])];
+    let width = sample(seed, v[14], v[15]);
+    let height = if c.bird_delay.is_some() && c.capacity == 10 {
+        width
+    } else {
+        sample(seed, v[16], v[17])
+    };
+    let sizes = [width, height];
     if let Some([offset, spread_a, spread_b]) = c.splash {
         use crate::palms::wave;
         let tau = std::f32::consts::TAU;
@@ -79,6 +126,9 @@ fn spawn(c: &Config, seed: &mut u32) -> Particle {
         let transform = |w: [f32; 3], i: usize| m[i] * w[0] + m[4 + i] * w[1] + m[8 + i] * w[2];
         return Particle {
             phase,
+            tile_step: 0,
+            tile_clock: 0,
+            rotation: 0,
             position: std::array::from_fn(|i| m[12 + i] + transform(local, i)),
             velocity: std::array::from_fn(|i| transform(direction, i)),
             inverse: 1. / remaining,
@@ -88,7 +138,7 @@ fn spawn(c: &Config, seed: &mut u32) -> Particle {
     }
     let x = ((2. * unit(seed) as f64 - 1.) * v[1] as f64) as f32;
     let z = ((2. * unit(seed) as f64 - 1.) * v[2] as f64) as f32;
-    let _speed = sample(seed, v[3], v[4]); // Zero speed still consumes a draw.
+    let speed = sample(seed, v[3], v[4]); // Zero speed still consumes a draw.
     let m = &c.matrix;
     let position = std::array::from_fn(|i| {
         ((m[12 + i] as f64 + m[i] as f64 * x as f64) as f32 as f64 + m[8 + i] as f64 * z as f64)
@@ -96,8 +146,11 @@ fn spawn(c: &Config, seed: &mut u32) -> Particle {
     });
     Particle {
         phase,
+        tile_step: 0,
+        tile_clock: 0,
+        rotation: 0,
         position,
-        velocity: [0.; 3],
+        velocity: std::array::from_fn(|i| -speed * m[4 + i]),
         inverse: 1. / remaining,
         remaining,
         sizes,
@@ -120,6 +173,16 @@ fn update(p: &mut Particle, c: &Config, elapsed: f32, steps: usize, seed: &mut u
         p.inverse = 1. / p.remaining;
     }
     p.remaining -= elapsed;
+    if c.pollen.is_some() {
+        // This packed angle advances once per emitter update, even with zero motion steps.
+        let speed = p.rotation & 0x7fff;
+        let increment = speed << 16;
+        p.rotation = if p.rotation & 0x8000 == 0 {
+            p.rotation.wrapping_add(increment)
+        } else {
+            p.rotation.wrapping_sub(increment)
+        };
+    }
     for _ in 0..steps {
         for i in 0..3 {
             let dv = c.values[11 + i] * H;
@@ -156,7 +219,7 @@ fn corners(
     let color = match p.phase {
         1 => {
             ratio = 1. - ratio;
-            if c.splash.is_none() {
+            if c.splash.is_none() && c.bird_delay.is_none() {
                 for s in &mut sizes {
                     *s *= ratio;
                 }
@@ -186,16 +249,39 @@ fn corners(
     });
     let signs = [[-1., -1.], [-1., 1.], [1., 1.], [1., -1.]];
     let uvs = [[0., 1.], [0., 0.], [1., 0.], [1., 1.]];
+    let frame = if p.tile_step <= 7 {
+        p.tile_step
+    } else {
+        14 - p.tile_step
+    };
     let quad: [[f32; 9]; 4] = std::array::from_fn(|j| {
         let xyz: [f32; 3] = std::array::from_fn(|i| {
-            (p.position[i] + signs[j][0] * (sizes[0] * u[i])) + signs[j][1] * (sizes[1] * v[i])
+            let (mut width, mut height) = (sizes[0] * u[i], sizes[1] * v[i]);
+            if p.rotation != 0 {
+                let index = (p.rotation >> 22) as usize;
+                let sine = crate::palms::sine_index(index);
+                let cosine = crate::palms::sine_index((index + 256) % 1023);
+                (width, height) = (
+                    width * cosine + height * sine,
+                    height * cosine - width * sine,
+                );
+            }
+            (p.position[i] + signs[j][0] * width) + signs[j][1] * height
         });
         [
             xyz[0],
             xyz[1],
             xyz[2],
-            uvs[j][0],
-            uvs[j][1],
+            if c.bird_delay.is_some() {
+                (f32::from(frame % 4) + uvs[j][0]) / 4.
+            } else {
+                uvs[j][0]
+            },
+            if c.bird_delay.is_some() {
+                (1. - f32::from(frame / 4) + uvs[j][1]) / 2.
+            } else {
+                uvs[j][1]
+            },
             (color & 255) as f32 / 255.,
             ((color >> 8) & 255) as f32 / 255.,
             ((color >> 16) & 255) as f32 / 255.,
@@ -207,17 +293,27 @@ fn corners(
         alpha,
     )
 }
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Effect {
+    Rain,
+    Splash,
+    Birds,
+    Pollen,
+}
 impl Rain {
     pub fn attach(scene: &mut Scene, bytes: &[u8]) -> io::Result<()> {
-        Self::attach_effect(scene, bytes, false)
+        Self::attach_effect(scene, bytes, Effect::Rain)
     }
-    pub fn attach_effect(scene: &mut Scene, bytes: &[u8], splash: bool) -> io::Result<()> {
-        let (side, emitters_count, capacity_limit, magic) = if splash {
-            (64usize, 8usize, 20usize, b"OJSPLH01")
-        } else {
-            (32, 2, 150, b"OJRAIN01")
+    pub(crate) fn attach_effect(scene: &mut Scene, bytes: &[u8], effect: Effect) -> io::Result<()> {
+        let splash = effect == Effect::Splash;
+        let birds = effect == Effect::Birds;
+        let pollen = effect == Effect::Pollen;
+        let (side, emitters_count, record_size, magic) = match effect {
+            Effect::Rain => (32usize, 2usize, 156usize, b"OJRAIN01"),
+            Effect::Splash => (64, 8, 168, b"OJSPLH01"),
+            Effect::Pollen => (64, 1, 184, b"OJPOLL01"),
+            Effect::Birds => (32, 2, 160, b"OJBIRD01"),
         };
-        let record_size = if splash { 168 } else { 156 };
         let pixels_start = 8 + emitters_count * record_size;
         if bytes.len() != pixels_start + side * side * 4
             || &bytes[..8] != magic
@@ -225,6 +321,10 @@ impl Rain {
             || scene.height < side as u32
             || (if splash {
                 scene.splashes.is_some()
+            } else if birds {
+                scene.birds.is_some()
+            } else if pollen {
+                scene.pollen.is_some()
             } else {
                 scene.rain.is_some()
             })
@@ -243,16 +343,28 @@ impl Rain {
             let colors = std::array::from_fn(|i| word(140 + i * 4));
             let splash_controls =
                 splash.then(|| std::array::from_fn(|i| f32::from_bits(word(156 + i * 4))));
-            if splash_controls
+            let controls =
+                pollen.then(|| std::array::from_fn(|i| f32::from_bits(word(156 + i * 4))));
+            if controls.is_some_and(|v: [f32; 7]| {
+                v.iter().any(|x| !x.is_finite() || x.abs() > 1000.) || v[3] > v[4] || v[5] > v[6]
+            }) || splash_controls
                 .is_some_and(|v: [f32; 3]| v.iter().any(|x| !x.is_finite() || x.abs() > 10000.))
-                || capacity != capacity_limit
+                || capacity
+                    != (if birds {
+                        [5, 10][n]
+                    } else if splash || pollen {
+                        20
+                    } else {
+                        150
+                    })
+                || (birds && bytes[start + 156..start + 160] != [4, 2, [10, 2][n], 4])
                 || matrix
                     .iter()
                     .chain(values.iter())
                     .any(|x| !x.is_finite() || x.abs() > 10000.)
                 || values[0] <= 0.
                 || values[0] > 1000.
-                || (!splash && (values[3] != 0. || values[4] != 0.))
+                || (!splash && !birds && !pollen && (values[3] != 0. || values[4] != 0.))
                 || values[3] < 0.
                 || values[4] < values[3]
                 || values[1] < 0.
@@ -271,6 +383,8 @@ impl Rain {
                     values,
                     colors,
                     splash: splash_controls,
+                    pollen: controls,
+                    bird_delay: birds.then(|| bytes[start + 158]),
                 },
                 particles: Vec::new(),
                 emission: 0.,
@@ -278,10 +392,14 @@ impl Rain {
             });
         }
         let first = scene.vertices.len() / 9;
+        let total_corners = emitters
+            .iter()
+            .map(|e| e.config.capacity * 6)
+            .sum::<usize>();
         let mut rain = Self {
             first,
-            vertices: vec![0.; emitters_count * capacity_limit * 6 * 9],
-            alphas: vec![0; emitters_count * capacity_limit * 6],
+            vertices: vec![0.; total_corners * 9],
+            alphas: vec![0; total_corners],
             emitters,
             seed: 1,
             pending: 0.,
@@ -306,20 +424,29 @@ impl Rain {
         scene.texture_sizes.push([side as u32, side as u32]);
         scene.layers += 1;
         scene.ui_start = scene.layers;
-        for n in 0..emitters_count {
+        let mut cursor = first;
+        for emitter in &rain.emitters {
+            let count = emitter.config.capacity * 6;
             scene.draws.push(Draw {
-                first: (first + n * capacity_limit * 6) as u32,
-                count: (capacity_limit * 6) as u32,
-                blend: if splash { 1 } else { 6 },
-                vertex_fog: if splash { 5 } else { 4 },
+                first: cursor as u32,
+                count: count as u32,
+                blend: if splash || birds { 1 } else { 6 },
+                vertex_fog: if splash || birds { 5 } else { 4 },
                 parameters: [1., 1., 0., 0., 1., 2., 0., 1.],
             });
             scene.uv_rates.push([0.; 2]);
+            cursor += count;
         }
         if splash {
             scene.splashes = Some(rain)
         } else {
-            scene.rain = Some(rain)
+            if birds {
+                scene.birds = Some(rain);
+            } else if pollen {
+                scene.pollen = Some(rain);
+            } else {
+                scene.rain = Some(rain);
+            }
         }
         Ok(())
     }
@@ -334,6 +461,13 @@ impl Rain {
         }
         self.rebuild();
     }
+    /// Pollen rotates once per displayed update. Fixed-time research captures use advance().
+    pub fn advance_frame(&mut self, dt: f32) {
+        if dt.is_finite() && dt > 0. && dt <= 0.1 {
+            self.tick(dt);
+        }
+        self.rebuild();
+    }
     fn tick(&mut self, dt: f32) {
         for e in &mut self.emitters {
             let combined = e.simulation + dt;
@@ -342,6 +476,15 @@ impl Rain {
             e.simulation = combined - elapsed;
             let mut i = 0;
             while i < e.particles.len() {
+                if let Some(delay) = e.config.bird_delay {
+                    let p = &mut e.particles[i];
+                    if p.tile_clock >= delay {
+                        p.tile_clock = 0;
+                        p.tile_step = (p.tile_step + 1) % 14;
+                    } else {
+                        p.tile_clock = (f32::from(p.tile_clock) + 120. * dt).trunc() as u8;
+                    }
+                }
                 if update(
                     &mut e.particles[i],
                     &e.config,
@@ -364,15 +507,19 @@ impl Rain {
     }
     fn rebuild(&mut self) {
         self.alphas.fill(0);
-        for (n, e) in self.emitters.iter().enumerate() {
+        let mut base = 0;
+        for e in &self.emitters {
             for slot in 0..e.config.capacity {
-                let start = (n * e.config.capacity + slot) * 6;
+                let start = base + slot * 6;
                 if let Some(p) = e.particles.get(slot) {
                     let (verts, alpha) = corners(
                         p,
                         &e.config,
                         self.layer,
-                        e.config.splash.map(|_| self.billboard),
+                        (e.config.splash.is_some()
+                            || e.config.bird_delay.is_some()
+                            || e.config.pollen.is_some())
+                        .then_some(self.billboard),
                     );
                     for (j, v) in verts.iter().enumerate() {
                         self.vertices[(start + j) * 9..(start + j + 1) * 9].copy_from_slice(v);
@@ -387,6 +534,7 @@ impl Rain {
                     }
                 }
             }
+            base += e.config.capacity * 6;
         }
     }
 }
@@ -396,6 +544,8 @@ mod tests {
     fn config() -> Config {
         Config {
             splash: None,
+            bird_delay: None,
+            pollen: None,
             matrix: [
                 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
             ],
@@ -405,6 +555,23 @@ mod tests {
             ],
             colors: [0x00010101, 0xdfebe5de, 0xdeede7e0, 0],
         }
+    }
+    #[test]
+    fn pollen_starts_in_main_and_rotates_between_motion_steps() {
+        let mut config = config();
+        config.pollen = Some([0.1, 0.5, 0.8, 0., 0., 0., 0.004]);
+        config.values[3..9].copy_from_slice(&[0.8, 1., 0., 0., 4., 12.]);
+        let mut seed = 1u32;
+        let mut particle = spawn(&config, &mut seed);
+        assert_eq!(particle.phase, 0);
+        assert!((4. ..=12.).contains(&particle.remaining));
+        let speed = particle.velocity.iter().map(|v| v * v).sum::<f32>().sqrt();
+        assert!((0.79..=1.01).contains(&speed));
+        let before = particle.position;
+        particle.rotation = 6;
+        assert!(update(&mut particle, &config, 0., 0, &mut seed));
+        assert_eq!(particle.position, before);
+        assert_eq!(particle.rotation, 0x60006);
     }
     #[test]
     fn native_creation_samples() {
@@ -601,7 +768,7 @@ mod tests {
     fn native_captured_vertices() {
         let directory =
             std::env::var("OPENJADE_RAIN_CAPTURES").expect("Capture directory required");
-        check_draws(directory, None);
+        check_draws(directory, None, Effect::Rain);
     }
     #[test]
     #[ignore = "Requires OPENJADE_SPLASH_CAPTURES and OPENJADE_SPLASH_SCENE"]
@@ -611,9 +778,23 @@ mod tests {
         check_draws(
             std::env::var("OPENJADE_SPLASH_CAPTURES").unwrap(),
             Some(scene.splashes.unwrap().billboard),
+            Effect::Splash,
         );
     }
-    fn check_draws(directory: String, axes: Option<[[f32; 3]; 2]>) {
+    #[test]
+    #[ignore = "Requires local GOG bird captures and a prepared scene"]
+    fn native_bird_corners() {
+        let path = std::env::var("OPENJADE_BIRD_SCENE").unwrap();
+        let scene = Scene::load(std::path::Path::new(&path)).unwrap();
+        check_draws(
+            std::env::var("OPENJADE_BIRD_CAPTURES").unwrap(),
+            Some(scene.birds.unwrap().billboard),
+            Effect::Birds,
+        );
+    }
+    fn check_draws(directory: String, axes: Option<[[f32; 3]; 2]>, effect: Effect) {
+        let birds = effect == Effect::Birds;
+        let pollen = effect == Effect::Pollen;
         let mut max_error = 0_f32;
         let mut counts = [0usize; 3];
         let mut draws = 0;
@@ -624,7 +805,11 @@ mod tests {
                     .file_name()
                     .unwrap()
                     .to_string_lossy()
-                    .starts_with(if axes.is_some() {
+                    .starts_with(if pollen {
+                        "pollen-native-"
+                    } else if birds {
+                        "birds-track-"
+                    } else if axes.is_some() {
                         "splash-draw-"
                     } else {
                         "rain-v-"
@@ -639,23 +824,43 @@ mod tests {
             assert_eq!(particles.len() % 48, 0);
             assert_eq!(raw.len(), particles.len() / 48 * 216);
             let word = |b: &[u8], i: usize| u32::from_le_bytes(b[i..i + 4].try_into().unwrap());
-            assert_eq!(
-                word(&d, 0x14),
-                if axes.is_some() { 0x20149 } else { 0x08020241 }
-            );
+            if birds {
+                assert!(matches!(word(&d, 0x14), 0x80000047 | 0x8000004a));
+            } else {
+                assert_eq!(
+                    word(&d, 0x14),
+                    if pollen {
+                        0x80001041
+                    } else if axes.is_some() {
+                        0x20149
+                    } else {
+                        0x08020241
+                    }
+                );
+            }
             assert_eq!(&d[0xf5..0xf7], &[0, 0]);
             let mut c = config();
             c.matrix = [
                 1., 0., 0., 0., 0., 0., -1., 0., 0., 1., 0., 0., 0., 0., 0., 1.,
             ];
-            c.splash = axes.map(|_| [0.2, 0.9, 0.8]);
+            if pollen {
+                c.pollen = Some([0.; 7]);
+            } else if birds {
+                c.bird_delay = Some(d[0xf2]);
+            } else {
+                c.splash = axes.map(|_| [0.2, 0.9, 0.8]);
+            }
             c.colors = [0xe8, 0xe0, 0xe4, 0xec].map(|i| word(&d, i));
             for (j, b) in particles.as_chunks::<48>().0.iter().enumerate() {
-                let phase = word(b, 0) as u8;
+                let flags = word(b, 0);
+                let phase = (flags & 3) as u8;
                 counts[phase as usize] += 1;
                 let v: [f32; 11] = std::array::from_fn(|i| f32::from_bits(word(b, 4 + i * 4)));
                 let p = Particle {
                     phase,
+                    tile_step: if birds { ((flags >> 8) & 127) as u8 } else { 0 },
+                    tile_clock: 0,
+                    rotation: word(b, 28),
                     position: v[..3].try_into().unwrap(),
                     velocity: v[3..6].try_into().unwrap(),
                     inverse: v[7],
@@ -684,11 +889,140 @@ mod tests {
             }
             draws += 1;
         }
-        assert!(counts.iter().all(|&n| n > 0));
+        if pollen {
+            assert!(counts[0] > 0 && counts[1] == 0 && counts[2] > 0 && max_error < 0.00002);
+        } else if birds {
+            assert!(counts[1] > 0);
+        } else {
+            assert!(counts.iter().all(|&n| n > 0));
+        }
         assert!(max_error < 0.002, "{max_error}");
         println!(
             "Native capture, max XYZ error {max_error}: {draws} draws, {counts:?} particles by phase; {} corners checked",
             counts.iter().sum::<usize>() * 6
         );
+    }
+    #[test]
+    #[ignore = "Requires local pollen GOG draw captures and a prepared scene"]
+    fn native_pollen_draws() {
+        let scene = Scene::load(std::path::Path::new(
+            &std::env::var("OPENJADE_POLLEN_SCENE").unwrap(),
+        ))
+        .unwrap();
+        check_draws(
+            std::env::var("OPENJADE_POLLEN_CAPTURES").unwrap(),
+            Some(scene.pollen.unwrap().billboard),
+            Effect::Pollen,
+        );
+    }
+    #[test]
+    #[ignore = "Requires local pollen GOG emission captures and a prepared scene"]
+    fn native_pollen_birth_and_motion() {
+        use std::collections::HashMap;
+        let scene = Scene::load(std::path::Path::new(
+            &std::env::var("OPENJADE_POLLEN_SCENE").unwrap(),
+        ))
+        .unwrap();
+        let pollen = scene.pollen.unwrap();
+        let config = &pollen.emitters[0].config;
+        let dir = std::path::PathBuf::from(std::env::var("OPENJADE_POLLEN_CAPTURES").unwrap());
+        let word = |b: &[u8], o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap());
+        let val = |b: &[u8], o: usize| f32::from_bits(word(b, o));
+        let mut random: HashMap<u32, Vec<u32>> = HashMap::new();
+        let rng = std::fs::read(dir.join("pollen-native-rng.bin")).unwrap();
+        assert_eq!(rng.len() % 8, 0);
+        for row in rng.as_chunks::<8>().0 {
+            random.entry(word(row, 0)).or_default().push(word(row, 4));
+        }
+        let states = std::fs::read(dir.join("pollen-native-states.bin")).unwrap();
+        let mut tail = states.as_slice();
+        let mut last: HashMap<[u32; 3], Particle> = HashMap::new();
+        let (mut births, mut updates, mut changes) = (0, 0, 0);
+        let (mut pos_error, mut vel_error, mut remainder) = (0_f32, 0_f32, 0_f32);
+        while !tail.is_empty() {
+            let (head, rest) = tail.split_at(20);
+            let frame = word(head, 0);
+            let dt = val(head, 4);
+            let old = word(head, 8) as usize;
+            let new = word(head, 12) as usize;
+            assert!(old <= new && new <= 20);
+            let (slots, rest) = rest.split_at(new * 48);
+            tail = rest;
+            let steps = ((remainder + dt) as f64 * 60.) as usize;
+            let elapsed = steps as f32 * H;
+            remainder = val(head, 16);
+            let mut next = HashMap::new();
+            for (slot, b) in slots.as_chunks::<48>().0.iter().enumerate() {
+                let velocity = std::array::from_fn(|i| word(b, 16 + 4 * i));
+                let actual = Particle {
+                    phase: (word(b, 0) & 3) as u8,
+                    tile_clock: 0,
+                    tile_step: 0,
+                    rotation: word(b, 28),
+                    position: std::array::from_fn(|i| val(b, 4 + i * 4)),
+                    velocity: velocity.map(f32::from_bits),
+                    inverse: val(b, 32),
+                    remaining: val(b, 36),
+                    sizes: [val(b, 40), val(b, 44)],
+                };
+                if slot >= old {
+                    let values = &random[&frame][(slot - old) * 10..(slot - old + 1) * 10];
+                    // The top state bit does not affect the 15-bit CRT outputs.
+                    let mut seed = (0..65536u32)
+                        .map(|lo| {
+                            ((values[0] << 16) | lo)
+                                .wrapping_sub(2531011)
+                                .wrapping_mul(0xb9b33155)
+                        })
+                        .find(|&s| {
+                            let mut state = s;
+                            values.iter().all(|&v| {
+                                state = state.wrapping_mul(214013).wrapping_add(2531011);
+                                (state >> 16) & 32767 == v
+                            })
+                        })
+                        .unwrap();
+                    let predicted = spawn(config, &mut seed);
+                    assert_eq!(predicted.phase, actual.phase);
+                    assert_eq!(predicted.rotation, actual.rotation);
+                    assert!((predicted.remaining - actual.remaining).abs() < 0.000002);
+                    for i in 0..2 {
+                        assert!((predicted.sizes[i] - actual.sizes[i]).abs() < 0.000001);
+                    }
+                    for i in 0..3 {
+                        pos_error =
+                            pos_error.max((predicted.position[i] - actual.position[i]).abs());
+                        vel_error =
+                            vel_error.max((predicted.velocity[i] - actual.velocity[i]).abs());
+                    }
+                    births += 1;
+                } else {
+                    let mut previous = last.get(&velocity).unwrap().clone();
+                    if actual.phase == previous.phase {
+                        assert!(update(&mut previous, config, elapsed, steps, &mut 1));
+                        assert_eq!(previous.rotation, actual.rotation);
+                        assert!((previous.remaining - actual.remaining).abs() < 0.000002);
+                        for i in 0..3 {
+                            pos_error =
+                                pos_error.max((previous.position[i] - actual.position[i]).abs());
+                        }
+                        updates += 1;
+                    } else {
+                        assert_eq!((previous.phase, actual.phase), (0, 2));
+                        changes += 1;
+                    }
+                }
+                assert!(next.insert(velocity, actual).is_none());
+            }
+            last = next;
+        }
+        assert!(
+            births >= 20
+                && updates > 1000
+                && changes > 0
+                && pos_error < 0.00002
+                && vel_error < 0.000001
+        );
+        println!("{births} births, {updates} motion updates, {changes} observed main/end transitions; max position error {pos_error}, velocity {vel_error}");
     }
 }
