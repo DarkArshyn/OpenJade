@@ -15,6 +15,7 @@ struct Config {
     splash: Option<[f32; 3]>,
     bird_delay: Option<u8>,
     pollen: Option<[f32; 7]>,
+    fog: bool,
 }
 #[derive(Clone, Debug)]
 struct Particle {
@@ -55,7 +56,11 @@ fn sample(seed: &mut u32, a: f32, b: f32) -> f32 {
 fn spawn(c: &Config, seed: &mut u32) -> Particle {
     let v = &c.values;
     if let Some([offset, spread_a, spread_b, angle_min, angle_max, spin_min, spin_max]) = c.pollen {
-        let remaining = sample(seed, v[7], v[8]);
+        let remaining = if c.fog {
+            sample(seed, v[5], v[6])
+        } else {
+            sample(seed, v[7], v[8])
+        };
         let sizes = [sample(seed, v[14], v[15]), sample(seed, v[16], v[17])];
         let x = sample(seed, -v[1], v[1]);
         let z = sample(seed, -v[2], v[2]);
@@ -79,7 +84,7 @@ fn spawn(c: &Config, seed: &mut u32) -> Particle {
             | (spin.unsigned_abs() & 0x7fff)
             | if spin < 0 { 0x8000 } else { 0 };
         return Particle {
-            phase: 0,
+            phase: if c.fog { 1 } else { 0 },
             tile_step: 0,
             tile_clock: 0,
             rotation,
@@ -219,7 +224,7 @@ fn corners(
     let color = match p.phase {
         1 => {
             ratio = 1. - ratio;
-            if c.splash.is_none() && c.bird_delay.is_none() {
+            if !c.fog && c.splash.is_none() && c.bird_delay.is_none() {
                 for s in &mut sizes {
                     *s *= ratio;
                 }
@@ -299,6 +304,7 @@ pub(crate) enum Effect {
     Splash,
     Birds,
     Pollen,
+    Fog,
 }
 impl Rain {
     pub fn attach(scene: &mut Scene, bytes: &[u8]) -> io::Result<()> {
@@ -307,11 +313,13 @@ impl Rain {
     pub(crate) fn attach_effect(scene: &mut Scene, bytes: &[u8], effect: Effect) -> io::Result<()> {
         let splash = effect == Effect::Splash;
         let birds = effect == Effect::Birds;
+        let fog = effect == Effect::Fog;
         let pollen = effect == Effect::Pollen;
         let (side, emitters_count, record_size, magic) = match effect {
             Effect::Rain => (32usize, 2usize, 156usize, b"OJRAIN01"),
             Effect::Splash => (64, 8, 168, b"OJSPLH01"),
             Effect::Pollen => (64, 1, 184, b"OJPOLL01"),
+            Effect::Fog => (64, 2, 184, b"OJFOGG01"),
             Effect::Birds => (32, 2, 160, b"OJBIRD01"),
         };
         let pixels_start = 8 + emitters_count * record_size;
@@ -323,6 +331,8 @@ impl Rain {
                 scene.splashes.is_some()
             } else if birds {
                 scene.birds.is_some()
+            } else if fog {
+                scene.fog.is_some()
             } else if pollen {
                 scene.pollen.is_some()
             } else {
@@ -344,7 +354,7 @@ impl Rain {
             let splash_controls =
                 splash.then(|| std::array::from_fn(|i| f32::from_bits(word(156 + i * 4))));
             let controls =
-                pollen.then(|| std::array::from_fn(|i| f32::from_bits(word(156 + i * 4))));
+                (pollen || fog).then(|| std::array::from_fn(|i| f32::from_bits(word(156 + i * 4))));
             if controls.is_some_and(|v: [f32; 7]| {
                 v.iter().any(|x| !x.is_finite() || x.abs() > 1000.) || v[3] > v[4] || v[5] > v[6]
             }) || splash_controls
@@ -352,7 +362,7 @@ impl Rain {
                 || capacity
                     != (if birds {
                         [5, 10][n]
-                    } else if splash || pollen {
+                    } else if splash || pollen || fog {
                         20
                     } else {
                         150
@@ -364,14 +374,16 @@ impl Rain {
                     .any(|x| !x.is_finite() || x.abs() > 10000.)
                 || values[0] <= 0.
                 || values[0] > 1000.
-                || (!splash && !birds && !pollen && (values[3] != 0. || values[4] != 0.))
+                || (!splash && !birds && !pollen && !fog && (values[3] != 0. || values[4] != 0.))
                 || values[3] < 0.
                 || values[4] < values[3]
                 || values[1] < 0.
                 || values[2] < 0.
-                || [5, 7, 9, 14, 16]
-                    .iter()
-                    .any(|&i| values[i] < 0. || values[i + 1] < values[i])
+                || [5, 7, 9, 14, 16].iter().any(|&i| {
+                    values[i] < 0.
+                        || values[i + 1] < 0.
+                        || (!(fog && i == 9) && values[i + 1] < values[i])
+                })
                 || values[8] <= 0.
             {
                 return Err(invalid("Unsupported rain parameters"));
@@ -384,6 +396,7 @@ impl Rain {
                     colors,
                     splash: splash_controls,
                     pollen: controls,
+                    fog,
                     bird_delay: birds.then(|| bytes[start + 158]),
                 },
                 particles: Vec::new(),
@@ -430,8 +443,8 @@ impl Rain {
             scene.draws.push(Draw {
                 first: cursor as u32,
                 count: count as u32,
-                blend: if splash || birds { 1 } else { 6 },
-                vertex_fog: if splash || birds { 5 } else { 4 },
+                blend: if splash || birds || fog { 1 } else { 6 },
+                vertex_fog: if splash || birds || fog { 5 } else { 4 },
                 parameters: [1., 1., 0., 0., 1., 2., 0., 1.],
             });
             scene.uv_rates.push([0.; 2]);
@@ -442,6 +455,8 @@ impl Rain {
         } else {
             if birds {
                 scene.birds = Some(rain);
+            } else if fog {
+                scene.fog = Some(rain);
             } else if pollen {
                 scene.pollen = Some(rain);
             } else {
@@ -546,6 +561,7 @@ mod tests {
             splash: None,
             bird_delay: None,
             pollen: None,
+            fog: false,
             matrix: [
                 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
             ],
@@ -794,6 +810,7 @@ mod tests {
     }
     fn check_draws(directory: String, axes: Option<[[f32; 3]; 2]>, effect: Effect) {
         let birds = effect == Effect::Birds;
+        let fog = effect == Effect::Fog;
         let pollen = effect == Effect::Pollen;
         let mut max_error = 0_f32;
         let mut counts = [0usize; 3];
@@ -805,7 +822,9 @@ mod tests {
                     .file_name()
                     .unwrap()
                     .to_string_lossy()
-                    .starts_with(if pollen {
+                    .starts_with(if fog {
+                        "fog-life-"
+                    } else if pollen {
                         "pollen-native-"
                     } else if birds {
                         "birds-track-"
@@ -829,7 +848,7 @@ mod tests {
             } else {
                 assert_eq!(
                     word(&d, 0x14),
-                    if pollen {
+                    if pollen || fog {
                         0x80001041
                     } else if axes.is_some() {
                         0x20149
@@ -843,7 +862,8 @@ mod tests {
             c.matrix = [
                 1., 0., 0., 0., 0., 0., -1., 0., 0., 1., 0., 0., 0., 0., 0., 1.,
             ];
-            if pollen {
+            c.fog = fog;
+            if pollen || fog {
                 c.pollen = Some([0.; 7]);
             } else if birds {
                 c.bird_delay = Some(d[0xf2]);
@@ -1024,5 +1044,35 @@ mod tests {
                 && vel_error < 0.000001
         );
         println!("{births} births, {updates} motion updates, {changes} observed main/end transitions; max position error {pos_error}, velocity {vel_error}");
+    }
+    #[test]
+    #[ignore = "Requires local fog-life captures and prepared scene"]
+    fn native_fog_draws() {
+        let scene = Scene::load(std::path::Path::new(
+            &std::env::var("OPENJADE_FOG_SCENE").unwrap(),
+        ))
+        .unwrap();
+        check_draws(
+            std::env::var("OPENJADE_FOG_CAPTURES").unwrap(),
+            Some(scene.fog.unwrap().billboard),
+            Effect::Fog,
+        );
+    }
+    #[test]
+    fn fog_starts_in_initial_and_keeps_size() {
+        let mut c = config();
+        c.fog = true;
+        c.pollen = Some([0.; 7]);
+        c.values[5] = 2.;
+        c.values[6] = 3.;
+        let mut p = spawn(&c, &mut 1);
+        assert_eq!(p.phase, 1);
+        p.rotation = 0;
+        let a = corners(&p, &c, 0., None).0;
+        p.remaining *= 0.5;
+        let b = corners(&p, &c, 0., None).0;
+        for (x, y) in a.iter().zip(b) {
+            assert_eq!(x[..5], y[..5]);
+        }
     }
 }

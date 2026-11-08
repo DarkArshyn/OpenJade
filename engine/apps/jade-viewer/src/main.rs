@@ -406,7 +406,7 @@ impl ApplicationHandler for App {
                     menu.pixel_scale = viewport(size.width, size.height)[2] / 800.;
                     menu.render();
                     p.menu_frame(menu.camera(), None);
-                    p.native_ui(&menu.vertices);
+                    p.native_ui(&menu.vertices, &menu.opacities);
                 }
                 match p.draw() {
                     Ok(true) => self.frames += 1,
@@ -551,6 +551,22 @@ fn main() -> std::process::ExitCode {
         }
         args.remove(i);
     }
+    if let Some(i) = args.iter().position(|s| s == "--no-fog") {
+        if let Some(scene) = &mut scene {
+            scene.fog = None;
+        }
+        args.remove(i);
+    }
+    if let Some(scene) = &scene {
+        println!(
+            "Menu fog: {}",
+            if scene.fog.is_some() {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+    }
     if let Some(scene) = &scene {
         println!(
             "Menu pollen: {}",
@@ -683,7 +699,7 @@ fn main() -> std::process::ExitCode {
             use std::io::Read;
             let mut magic = [0; 8];
             std::fs::File::open(&path)?.read_exact(&mut magic)?;
-            Ok(&magic == b"OJUI0002" || &magic == b"OJUI0003")
+            Ok(&magic == b"OJUI0002" || &magic == b"OJUI0003" || &magic == b"OJUI0004")
         })();
         if matches!(is_native, Ok(true)) {
             if settings_path.is_some() {
@@ -728,7 +744,7 @@ fn main() -> std::process::ExitCode {
         None
     };
     if args.iter().any(|s| s == "--help" || s == "-h") {
-        println!("jade-viewer [--scene PATH] [--menu BUNDLE] [--texture-filter nearest|linear|trilinear] [--color-pipeline srgb|legacy-unorm] [--gamma 0..100 | --settings PATH] [--no-menu-blur] [--no-menu-additive] [--no-rain] [--no-splashes] [--no-birds] [--no-pollen] [--no-flight] [--validation] [--smoke]\njade-viewer --probe [--validation]\nDefault: diagnostic panel. --scene: decoded research geometry with depth and fixed camera. Smoke resizes twice and exits after 80 frames.");
+        println!("jade-viewer [--scene PATH] [--menu BUNDLE] [--texture-filter nearest|linear|trilinear] [--color-pipeline srgb|legacy-unorm] [--gamma 0..100 | --settings PATH] [--no-menu-blur] [--no-menu-additive] [--no-rain] [--no-splashes] [--no-birds] [--no-pollen] [--no-fog] [--no-flight] [--validation] [--smoke]\njade-viewer --probe [--validation]\nDefault: diagnostic panel. --scene: decoded research geometry with depth and fixed camera. Smoke resizes twice and exits after 80 frames.");
         return std::process::ExitCode::SUCCESS;
     }
     if args

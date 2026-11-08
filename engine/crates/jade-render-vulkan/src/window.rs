@@ -66,6 +66,7 @@ pub struct Presenter {
     menu_frame: Option<([f32; 20], Option<u32>)>,
     gamma: Option<u8>,
     native_ui: Vec<f32>,
+    native_opacities: Vec<f32>,
     vsync: bool,
 }
 
@@ -139,6 +140,7 @@ impl Presenter {
                 menu_frame: None,
                 gamma: None,
                 native_ui: Vec::new(),
+                native_opacities: Vec::new(),
                 vsync: true,
             };
             if validation {
@@ -234,7 +236,9 @@ impl Presenter {
             Ok(this)
         }
     }
-    pub fn native_ui(&mut self, vertices: &[f32]) {
+    pub fn native_ui(&mut self, vertices: &[f32], opacities: &[f32]) {
+        self.native_opacities.clear();
+        self.native_opacities.extend_from_slice(opacities);
         self.native_ui.clear();
         self.native_ui.extend_from_slice(vertices);
     }
@@ -415,9 +419,9 @@ impl Presenter {
             d.reset_command_buffer(self.command, vk::CommandBufferResetFlags::empty())?;
             d.begin_command_buffer(self.command, &vk::CommandBufferBeginInfo::default())?;
             let now = std::time::Instant::now();
-            let (palms, curtain, mut rain, mut splash, mut birds, mut pollen, mut flight) =
+            let (palms, curtain, mut rain, mut splash, mut birds, mut pollen, mut fog, mut flight) =
                 self.scene.as_mut().map_or(
-                    (&mut [][..], &mut [][..], None, None, None, None, None),
+                    (&mut [][..], &mut [][..], None, None, None, None, None, None),
                     |s| {
                         (
                             s.palms.as_mut_slice(),
@@ -426,6 +430,7 @@ impl Presenter {
                             s.splashes.as_mut(),
                             s.birds.as_mut(),
                             s.pollen.as_mut(),
+                            s.fog.as_mut(),
                             s.flight.as_mut(),
                         )
                     },
@@ -452,6 +457,7 @@ impl Presenter {
                 (splash.as_deref_mut(), false),
                 (birds.as_deref_mut(), false),
                 (pollen.as_deref_mut(), self.fixed_seconds.is_none()),
+                (fog.as_deref_mut(), self.fixed_seconds.is_none()),
             ]
             .into_iter()
             .filter_map(|(particles, live)| particles.map(|p| (p, live)))
@@ -476,7 +482,7 @@ impl Presenter {
                 index as usize,
                 self.menu_frame,
                 self.gamma,
-                &self.native_ui,
+                (&self.native_ui, &self.native_opacities),
                 AnimationFrame {
                     elapsed: self
                         .fixed_seconds
@@ -489,6 +495,7 @@ impl Presenter {
                         splash.as_deref(),
                         birds.as_deref(),
                         pollen.as_deref(),
+                        fog.as_deref(),
                     ],
                     flight: flight.as_deref(),
                 },

@@ -40,6 +40,7 @@ pub struct Scene {
     pub splashes: Option<rain::Rain>,
     pub birds: Option<rain::Rain>,
     pub pollen: Option<rain::Rain>,
+    pub fog: Option<rain::Rain>,
     pub flight: Option<flight::Flight>,
     pub glow: Option<(u32, u8)>,
     pub menu_additive: bool,
@@ -195,6 +196,15 @@ impl Scene {
                 let mut bytes = Vec::new();
                 file.take(16577).read_to_end(&mut bytes)?;
                 rain::Rain::attach_effect(&mut scene, &bytes, rain::Effect::Pollen)?;
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        match std::fs::File::open(path.with_extension("fog")) {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                file.take(16761).read_to_end(&mut bytes)?;
+                rain::Rain::attach_effect(&mut scene, &bytes, rain::Effect::Fog)?;
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),
@@ -398,6 +408,7 @@ impl Scene {
             splashes: None,
             birds: None,
             pollen: None,
+            fog: None,
             flight: None,
             glow: None,
             menu_additive: true,
@@ -633,6 +644,7 @@ mod native_texture_tests {
             splashes: None,
             birds: None,
             pollen: None,
+            fog: None,
             flight: None,
             glow: None,
             menu_additive: true,

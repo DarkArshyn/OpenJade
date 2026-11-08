@@ -346,6 +346,7 @@ mod invalid_bundle_tests {
             splashes: None,
             birds: None,
             pollen: None,
+            fog: None,
             flight: None,
             glow: None,
             menu_additive: true,

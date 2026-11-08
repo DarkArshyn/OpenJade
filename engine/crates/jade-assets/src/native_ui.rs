@@ -144,6 +144,30 @@ pub struct AppliedDisplay {
     pub resolution: (u32, u32),
     pub vsync: bool,
 }
+#[derive(Clone)]
+struct CursorTrack {
+    rate: f32,
+    size: [f32; 2],
+    keys: [[f32; 3]; 4],
+    frame: f32,
+}
+impl CursorTrack {
+    fn advance(&mut self, dt: f32) {
+        if dt.is_finite() && dt >= 0. {
+            self.frame += dt * self.rate;
+            if self.frame >= self.keys[3][0] {
+                self.frame = 0.;
+            }
+        }
+    }
+    fn alpha(&self) -> [f32; 2] {
+        let k = self.keys.windows(2).find(|p| self.frame < p[1][0]).unwrap();
+        let t = (self.frame - k[0][0]) / (k[1][0] - k[0][0]);
+        std::array::from_fn(|i| {
+            ((k[0][i + 1] + t * (k[1][i + 1] - k[0][i + 1])).trunc() / 255.).clamp(0., 1.)
+        })
+    }
+}
 pub struct NativeMenu {
     sprites: BTreeMap<String, Sprite>,
     font_size: f32,
@@ -159,6 +183,8 @@ pub struct NativeMenu {
     drag: Option<Action>,
     pub hits: Vec<Hit>,
     pub vertices: Vec<f32>,
+    pub opacities: Vec<f32>,
+    cursor_track: Option<CursorTrack>,
     pub settings: Settings,
     pub saved: Settings,
     pub profiles: Vec<String>,
@@ -210,7 +236,8 @@ impl NativeMenu {
         }
         let mut r = Reader(bytes);
         let magic = r.take(8)?;
-        let v3 = magic == b"OJUI0003";
+        let v4 = magic == b"OJUI0004";
+        let v3 = v4 || magic == b"OJUI0003";
         if !v3 && magic != b"OJUI0002" {
             return Err(bad());
         }
@@ -331,6 +358,36 @@ impl NativeMenu {
             }
             cameras.push(c);
         }
+        let cursor_track = if v4 {
+            let rate = r.float()?;
+            let size = [r.float()?, r.float()?];
+            let mut keys = [[0.; 3]; 4];
+            for key in &mut keys {
+                for value in key {
+                    *value = r.float()?;
+                }
+            }
+            if !sprites.contains_key("cursor_glow")
+                || !(0. ..=120.).contains(&rate)
+                || rate == 0.
+                || size.iter().any(|x| *x <= 0. || *x > 800.)
+                || keys[0][0] != 0.
+                || keys.windows(2).any(|p| p[0][0] >= p[1][0])
+                || keys
+                    .iter()
+                    .any(|k| k[1..].iter().any(|a| !(0. ..=255.).contains(a)))
+            {
+                return Err(bad());
+            }
+            Some(CursorTrack {
+                rate,
+                size,
+                keys,
+                frame: 0.,
+            })
+        } else {
+            None
+        };
         if !r.0.is_empty()
             || cameras[0]
                 .iter()
@@ -360,6 +417,8 @@ impl NativeMenu {
             drag: None,
             hits: vec![],
             vertices: vec![],
+            opacities: vec![],
+            cursor_track,
             saved: settings.clone(),
             settings,
             profiles: vec![],
@@ -383,6 +442,9 @@ impl NativeMenu {
         self.cameras[(self.time.unwrap_or(0.).clamp(0., 9.) * 60.).floor() as usize]
     }
     pub fn tick(&mut self, dt: f32) {
+        if let Some(track) = &mut self.cursor_track {
+            track.advance(dt);
+        }
         if let Some(t) = &mut self.time {
             *t = (*t + dt.max(0.)).min(9.)
         }
@@ -897,6 +959,7 @@ impl NativeMenu {
     }
     pub fn render(&mut self) {
         self.vertices.clear();
+        self.opacities.clear();
         self.hits.clear();
         if self.time.is_some() {
             return;
@@ -1397,9 +1460,24 @@ impl NativeMenu {
                 780.,
             );
         }
+        let mut cursor_alpha = None;
         if let Some((x, y)) = self.pointer {
-            self.sprite("cursor", [x, y, 40., 40.], [1.; 3]);
+            if let Some(track) = &self.cursor_track {
+                let size = track.size;
+                let alpha = track.alpha();
+                self.sprite("cursor", [x, y, size[0], size[1]], [254. / 255.; 3]);
+                self.sprite("cursor_glow", [x, y, size[0], size[1]], [254. / 255.; 3]);
+                cursor_alpha = Some(alpha);
+            } else {
+                self.sprite("cursor", [x, y, 40., 40.], [1.; 3]);
+            }
         }
+        self.opacities = vec![1.; self.vertices.len() / 54];
+        if let Some(alpha) = cursor_alpha {
+            let n = self.opacities.len();
+            self.opacities[n - 2..].copy_from_slice(&alpha);
+        }
+
         if self.focus.is_some_and(|i| i >= self.hits.len()) {
             self.focus = None;
         }
@@ -1511,6 +1589,7 @@ mod tests {
             splashes: None,
             birds: None,
             pollen: None,
+            fog: None,
             flight: None,
             glow: None,
             menu_additive: true,
@@ -1662,6 +1741,30 @@ mod tests {
         m.perform(Action::Answer(0));
         assert_eq!(m.applied_display().gamma, 0);
         assert_eq!(m.applied_display().resolution, (800, 600));
+    }
+    #[test]
+    fn cursor_pass_opacity_clears_during_camera_transition() {
+        let mut m = menu();
+        m.sprites.insert("cursor_glow".into(), m.sprites["cursor"]);
+        m.cursor_track = Some(CursorTrack {
+            rate: 10.,
+            size: [43.75; 2],
+            keys: [
+                [0., 255., 255.],
+                [25., 250., 50.],
+                [50., 255., 255.],
+                [60., 255., 255.],
+            ],
+            frame: 25.,
+        });
+        m.pointer = Some((300., 200.));
+        m.render();
+        let n = m.opacities.len();
+        assert_eq!(n, m.vertices.len() / 54);
+        assert_eq!(&m.opacities[n - 2..], &[250. / 255., 50. / 255.]);
+        m.time = Some(0.);
+        m.render();
+        assert!(m.vertices.is_empty() && m.opacities.is_empty());
     }
     fn menu() -> NativeMenu {
         let (b, mut s) = fixture();
@@ -1836,5 +1939,27 @@ mod scale_tests {
         assert_eq!(choose_font(&sizes, 18. * 1.25 * 2.), Some(48));
         assert_eq!(choose_font(&sizes, 100.), Some(48));
         assert_eq!(choose_font(&[], 20.), None);
+    }
+    #[test]
+    fn cursor_tracks_hold_then_restart() {
+        let mut track = CursorTrack {
+            rate: 10.,
+            size: [43.75; 2],
+            keys: [
+                [0., 255., 255.],
+                [25., 250., 50.],
+                [50., 255., 255.],
+                [60., 255., 255.],
+            ],
+            frame: 0.,
+        };
+        track.advance(2.5);
+        assert_eq!(track.alpha(), [250. / 255., 50. / 255.]);
+        track.advance(2.5);
+        assert_eq!(track.alpha(), [1.; 2]);
+        track.advance(0.5);
+        assert_eq!(track.alpha(), [1.; 2]);
+        track.advance(0.6);
+        assert_eq!(track.frame, 0.);
     }
 }

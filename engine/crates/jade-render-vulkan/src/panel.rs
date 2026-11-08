@@ -20,7 +20,7 @@ pub(super) struct AnimationFrame<'a> {
     pub elapsed: f64,
     pub palms: &'a [jade_assets::palms::PalmVertex],
     pub curtain: &'a [jade_assets::rido2::Curtain],
-    pub rain: [Option<&'a jade_assets::rain::Rain>; 4],
+    pub rain: [Option<&'a jade_assets::rain::Rain>; 5],
     pub flight: Option<&'a jade_assets::flight::Flight>,
 }
 
@@ -164,6 +164,7 @@ impl Panel {
                 scene.splashes.as_ref(),
                 scene.birds.as_ref(),
                 scene.pollen.as_ref(),
+                scene.fog.as_ref(),
             ]
             .into_iter()
             .flatten()
@@ -802,9 +803,10 @@ impl Panel {
         index: usize,
         menu_frame: Option<([f32; 20], Option<u32>)>,
         gamma: Option<u8>,
-        ui: &[f32],
+        ui_frame: (&[f32], &[f32]),
         animation: AnimationFrame,
     ) -> Result<(), vk::Result> {
+        let (ui, opacities) = ui_frame;
         let AnimationFrame {
             elapsed,
             palms,
@@ -813,7 +815,11 @@ impl Panel {
             flight,
         } = animation;
         self.gamma.as_ref().unwrap().update(gamma)?;
-        if ui.len() > 65536 * 9
+        if opacities.len() != ui.len() / 54
+            || opacities
+                .iter()
+                .any(|a| !a.is_finite() || !(0. ..=1.).contains(a))
+            || ui.len() > 65536 * 9
             || !ui.len().is_multiple_of(54)
             || ui.iter().any(|v| !v.is_finite())
             || ui.as_chunks::<54>().0.iter().any(|q| {
@@ -1128,6 +1134,13 @@ impl Panel {
                 &bytes,
             );
             for (i, quad) in ui.as_chunks::<54>().0.iter().enumerate() {
+                d.cmd_push_constants(
+                    command,
+                    self.layout,
+                    vk::ShaderStageFlags::FRAGMENT,
+                    96,
+                    &opacities[i].to_ne_bytes(),
+                );
                 d.cmd_bind_descriptor_sets(
                     command,
                     vk::PipelineBindPoint::GRAPHICS,
