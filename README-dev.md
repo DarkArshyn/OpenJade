@@ -2,9 +2,10 @@
 
 [Project overview](README.md)
 
-Current implementation status: **2026-11-04**. Original game inputs remain read-only.
+Current implementation status: **2026-11-10**. Original game inputs remain read-only.
 
-Latest completed work: original logo/cursor pixel dimensions, linear UI filtering
+Latest completed work: dynamic fog emitters and MGM-driven cursor glow in Vulkan.
+Earlier work includes original logo/cursor pixel dimensions, linear UI filtering
 and resolution-aware selection among twelve MFT variants. Detailed menus are composed and controlled directly in
 Rust/Vulkan, with gamma, filtering, window resolution, V-Sync and local profile/
 settings persistence. A prepared native menu no longer needs a running Python
@@ -270,9 +271,9 @@ recovers four current-frame passes: two native-gain copies/reductions followed
 by two three-tap filters. An independent reference reconstructs three consecutive
 outputs within 2/255; no previous-frame scene contribution is observed in this
 menu state. The [measured blur is now integrated in Vulkan](docs/observations/2026-11-03-vulkan-menu-blur.md),
-before UI and gamma. Dynamic fog-particle simulation remains pending. Matching the measured fog3 UV phase reduces
+before UI and gamma. Dynamic fog-particle simulation is now implemented in the integration below. Matching the measured fog3 UV phase reduces
 part of the remaining difference; global illumination has not been adjusted.
-The separate additive chain is now partially implemented below; dynamic fog particles remain a future target.
+The separate additive chain is now partially implemented below; dynamic fog particles are now implemented below.
 
 ### Menu effects: inventory and native rain
 
@@ -304,7 +305,7 @@ checks at 0, 1 and 2 seconds are stable and error-free; rain changes the image a
 1 and 2 seconds. An 80-frame native-menu resize smoke test also passes.
 This validates integration, not full visual equivalence: a private seed and 60 Hz
 research clock are used, original shared RNG/time synchronization is unresolved,
-and dynamic fog particles remain open. [Menu birds and flies](docs/observations/2026-11-04-menu-birds-and-flies.md) now render two native bird particle emitters and two fly swarms. The [three mesh birds](docs/observations/2026-11-04-menu-mesh-flight.md) also run in Vulkan. Their native waypoint boxes and weighted local wing deformation have been checked against GOG draws over multiple laps. Eight native splash emitters now run alongside rain using the optional menu.splash file. The [capture and runtime checks](docs/observations/2026-11-04-splash-emitter-link.md) cover their birth vectors, phase colors, oriented quads and draw state. The fixed-menu splash fog matches the measured GOG InvertFogRange=0 color and vertex-depth curve. Isolated native draw replays changed RGB by at most 2/255 with this setting and 51/255 with the inverted setting.
+and exact dynamic fog composition remains open. [Menu birds and flies](docs/observations/2026-11-04-menu-birds-and-flies.md) now render two native bird particle emitters and two fly swarms. The [three mesh birds](docs/observations/2026-11-04-menu-mesh-flight.md) also run in Vulkan. Their native waypoint boxes and weighted local wing deformation have been checked against GOG draws over multiple laps. Eight native splash emitters now run alongside rain using the optional menu.splash file. The [capture and runtime checks](docs/observations/2026-11-04-splash-emitter-link.md) cover their birth vectors, phase colors, oriented quads and draw state. The fixed-menu splash fog matches the measured GOG InvertFogRange=0 color and vertex-depth curve. Isolated native draw replays changed RGB by at most 2/255 with this setting and 51/255 with the inverted setting.
 
 Regenerate a local package with `export_engine_materials.py --palm-source` to add
 the rain sidecar. Existing packages without it retain their previous behavior.
@@ -316,6 +317,52 @@ cargo run -p jade-viewer -- --scene ../reports/menu-rain-20261103/menu.ojscene -
 
 Add `--no-rain` for an otherwise identical comparison. See the linked report for
 the export command, native-capture checks and GPU regression commands.
+
+### Cursor glow and dynamic fog
+
+[Native draw isolation](docs/observations/2026-11-05-cursor-dynamic-fog.md) and
+[lifecycle replay](docs/observations/2026-11-05-fog-cursor-lifecycle.md) identify
+the two cursor textures and both dynamic fog emitters. The
+[Vulkan integration](docs/observations/2026-11-08-vulkan-fog-cursor.md) now loads
+both emitters from `menu.fog`, alongside the existing panels. OJUI0004 carries
+the cursor's MGM alpha tracks and second texture. Earlier UI bundles remain supported.
+
+Native Rust replay matches 21,348 fog corners with exact colors and UVs.
+The workspace has 57 passing ordinary tests. The complete menu passes the
+80-frame resize/transition smoke with zero Vulkan validation errors.
+Private random streams, exact cursor activation/quantization, native transparent
+ordering and final fog composition remain limitations. Global lighting is unchanged.
+
+```powershell
+# From engine/
+cargo run -p jade-viewer -- --scene ../reports/menu-fog-cursor-20261108/menu.ojscene --menu ../reports/menu-fog-cursor-20261108/ui/menu.ojui --color-pipeline legacy-unorm --validation
+```
+
+Use `--no-fog` to isolate the two dynamic emitters without removing the panels
+or vertex fog. Keep all sidecars beside the scene. Fresh material and UI exports
+produce the new sidecar and cursor tracks from local original resources.
+
+### Fixture animation and lighting receivers
+
+The [hangfire and lighting audit](docs/observations/2026-11-10-hangfire-lighting.md)
+identifies two sequential, group-limited vertex modifiers on each suspended fixture.
+A native replay checks 124 modifier outputs with maximum local error below `6e-8`.
+Weight loading is verified: primary mesh alpha bytes are copied unchanged and
+scaled by 1/256; GAO instance colors are a different buffer. All 124 captured
+49-color buffers match the mesh exactly. The [Vulkan integration](docs/observations/2026-11-10-vulkan-fixtures.md)
+now animates 672 expanded corners across both flame passes of the two fixtures.
+Its native Rust replay checks 41,664 corners; fixed-time captures and the 80-frame
+resize/transition smoke pass with zero Vulkan validation errors. Keep `menu.fixtures`
+with the prepared scene. Native startup from zero and 4,804 phase updates are now verified bit-for-bit using captured engine deltas. Independent wall-clock/video alignment remains unverified. A bounded
+lighting capture records 341 accumulation calls on 11 unresolved objects, while
+identified balcony, trunk and fixture draws retain cached colors. This does not
+validate global lighting parity or justify adding illumination to every object.
+
+From `engine/`, launch the prepared fixture package:
+
+```powershell
+cargo run -p jade-viewer -- --scene ../reports/menu-fixtures-20261110/menu.ojscene --menu ../reports/menu-fixtures-20261110/ui/menu.ojui --color-pipeline legacy-unorm --validation
+```
 
 ### Native menu blur in Vulkan
 

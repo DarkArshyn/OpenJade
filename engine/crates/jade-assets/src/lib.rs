@@ -30,6 +30,7 @@ pub enum ColorPipeline {
     LegacyUnorm,
 }
 pub mod curtain_field;
+mod fixtures;
 pub mod flight;
 pub mod native_mips;
 pub mod palms;
@@ -178,6 +179,16 @@ impl Scene {
                 let mut bytes = Vec::new();
                 file.take(4425).read_to_end(&mut bytes)?;
                 rain::Rain::attach_effect(&mut scene, &bytes, rain::Effect::Birds)?;
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        match std::fs::File::open(path.with_extension("fixtures")) {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                file.take(44 + 4096 * 56 + 1).read_to_end(&mut bytes)?;
+                let fixtures = fixtures::decode(&bytes, &scene.vertices, &scene.palms)?;
+                scene.palms.extend(fixtures);
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),

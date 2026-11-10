@@ -35,7 +35,7 @@ def capture(viewer,scene,directory,seconds,disabled,effect="rain"):
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('scene',type=Path);p.add_argument('output',type=Path)
     p.add_argument('--viewer',type=Path,default=Path(__file__).resolve().parents[1]/'engine/target/debug/jade-viewer.exe')
-    p.add_argument('--effect',choices=['rain','splashes','birds','flight','pollen'],default='rain')
+    p.add_argument('--effect',choices=['rain','splashes','birds','flight','pollen','fog'],default='rain')
     a=p.parse_args();out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);rows=[]
     for seconds in ((0,4,8,12) if a.effect=='flight' else (0,1,2)):
         off=capture(a.viewer.resolve(),a.scene.resolve(),out/f'{seconds}-off',seconds,True,a.effect)

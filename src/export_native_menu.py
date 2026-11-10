@@ -2,6 +2,7 @@
 import argparse
 import json
 import struct
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from PIL import Image
 from simulation_screens import Screens
@@ -40,6 +41,25 @@ def export(report, legacy, output, fonts):
     add('panel', panel.resize((500, 500), Image.Resampling.BILINEAR))
     add('logo', screens.logo)
     add('cursor', screens.texture('officialcursor_alpha2_desaturated.dds'))
+    add('cursor_glow', screens.texture('test.dds'))
+    text=(screens.assets/'pop4common.mgm').read_text(encoding='utf-8-sig')
+    start=text.index('<CURSOR>');end=text.index('</CURSOR>',start)+len('</CURSOR>')
+    cursor=ET.fromstring(text[start:end]);rate=float(cursor.findtext('FRAMERATE'))
+    children=cursor.findall('./CHILDREN/IMAGE')
+    tracks=[]
+    for child in children:
+        keys=child.findall('./KEYFRAMES/KEYFRAME')
+        assert all(k.findtext('INTERPOLATION')=='Linear' for k in keys)
+        assert all(len({k.findtext('COLOR'+str(i)) for i in range(1,5)})==1 for k in keys)
+        assert keys[-1].findtext('./ACTIONS/GotoFrame/FRAMEIDX')=='0'
+        tracks.append([(float(k.findtext('IDX')),(int(k.findtext('COLOR1'))&0xffffffff)>>24) for k in keys])
+    assert len(tracks)==2 and len(tracks[0])==len(tracks[1])==4
+    assert [k[0] for k in tracks[0]]==[k[0] for k in tracks[1]]
+    first=children[0].find('./KEYFRAMES/KEYFRAME')
+    width=(float(first.findtext('RIGHT'))-float(first.findtext('LEFT')))*800/640
+    height=(float(first.findtext('BOTTOM'))-float(first.findtext('TOP')))*600/480
+    cursor_values=[rate,width,height]+[v for a,b in zip(*tracks) for v in (a[0],a[1],b[1])]
+
     add('eax', screens.texture('eax.dds').resize((104, 33)))
     add('field', Image.new('RGBA', (2, 2), (65, 65, 65, 130)))
     for name in ('up', 'down'):
@@ -68,7 +88,7 @@ def export(report, legacy, output, fonts):
         atlases[-1].paste(im, (x, y))
         entries.append((name, len(atlases)-1, x, y, im.width, im.height, dx, dy, advance))
         x += im.width + 4; row = max(row, im.height)
-    blob = bytearray(b'OJUI0003')
+    blob = bytearray(b'OJUI0004')
     blob.extend(struct.pack('<IfI', len(atlases), 36.0, len(entries)))
     for atlas in atlases: blob.extend(struct.pack('<2I', *atlas.size))
     blob.extend(struct.pack('<I',len(sizes)))
@@ -80,9 +100,10 @@ def export(report, legacy, output, fonts):
     for atlas in atlases:
         raw = atlas.tobytes(); blob.extend(raw); blob.extend(bytes(512*512*4-len(raw)))
     blob.extend(data[-28136:])
+    blob.extend(struct.pack("<15f",*cursor_values))
     output.mkdir(parents=True, exist_ok=False)
     (output/'menu.ojui').write_bytes(blob)
-    (output/'manifest.json').write_text(json.dumps(dict(format='OJUI0003', font_sizes=sizes, logo_size=screens.logo.size, cursor_size=screens.texture('officialcursor_alpha2_desaturated.dds').size,
+    (output/'manifest.json').write_text(json.dumps(dict(format='OJUI0004', font_sizes=sizes, logo_size=screens.logo.size, cursor_size=screens.texture('officialcursor_alpha2_desaturated.dds').size,
         atlas_layers=len(atlases), sprites=len(entries), camera_samples=541,
         provenance=str(report), camera_bundle=str(legacy),
         limitations=['Independent reconstructed layouts and session profiles',

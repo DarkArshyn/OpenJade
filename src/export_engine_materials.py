@@ -214,8 +214,11 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False, animate_u
         from export_rain_controls import export_rain
         (output/'menu.rain').write_bytes(export_rain(palm_source))
         (output/'menu.splash').write_bytes(export_rain(palm_source,splashes=True))
+        (output/'menu.fog').write_bytes(export_rain(palm_source,fog=True))
         (output/'menu.pollen').write_bytes(export_rain(palm_source,pollen=True))
         (output/'menu.birds').write_bytes(export_rain(palm_source,birds=True))
+        from export_fixture_controls import export_fixtures
+        (output/'menu.fixtures').write_bytes(export_fixtures(palm_source, expanded, draws, audit))
         from export_mesh_flight import export_mesh_flight
         (output/'menu.flight').write_bytes(export_mesh_flight(palm_source))
         from export_rido2 import export_rido2
@@ -244,7 +247,7 @@ def convert(source, camera, output, time=0., balcony_modulate2x=False, animate_u
             control = export_rido2(palm_source, expanded, draws, audit, instance=instance)
             (output/f'menu.rido{instance}').write_bytes(control)
     (output/'menu.ojscene').write_bytes(blob)
-    manifest=dict(pollen_sidecar="menu.pollen" if palm_source is not None else None, pollen_runtime_reserved_triangles=40 if palm_source is not None else 0, flight_sidecar="menu.flight" if palm_source is not None else None, flight_runtime_triangles=66 if palm_source is not None else 0, bird_sidecar="menu.birds" if palm_source is not None else None, bird_runtime_reserved_triangles=30 if palm_source is not None else 0, splash_runtime_reserved_triangles=320 if palm_source is not None else 0, rain_sidecar="menu.rain" if palm_source is not None else None, rain_runtime_reserved_triangles=600 if palm_source is not None else 0, rain_runtime_extra_texture_layers=1 if palm_source is not None else 0, palm_vertices=palm_counts,version=5 if palm_source is not None else 4 if animate_uv else 3,animate_uv=animate_uv,source_sha256=report['source_sha256'],source_obj_sha256=hashlib.sha256((source/'scene.obj').read_bytes()).hexdigest(),
+    manifest=dict(fixture_sidecar="menu.fixtures" if palm_source is not None else None, fog_sidecar="menu.fog" if palm_source is not None else None, fog_runtime_reserved_triangles=80 if palm_source is not None else 0, pollen_sidecar="menu.pollen" if palm_source is not None else None, pollen_runtime_reserved_triangles=40 if palm_source is not None else 0, flight_sidecar="menu.flight" if palm_source is not None else None, flight_runtime_triangles=66 if palm_source is not None else 0, bird_sidecar="menu.birds" if palm_source is not None else None, bird_runtime_reserved_triangles=30 if palm_source is not None else 0, splash_runtime_reserved_triangles=320 if palm_source is not None else 0, rain_sidecar="menu.rain" if palm_source is not None else None, rain_runtime_reserved_triangles=600 if palm_source is not None else 0, rain_runtime_extra_texture_layers=1 if palm_source is not None else 0, palm_vertices=palm_counts,version=5 if palm_source is not None else 4 if animate_uv else 3,animate_uv=animate_uv,source_sha256=report['source_sha256'],source_obj_sha256=hashlib.sha256((source/'scene.obj').read_bytes()).hexdigest(),
         source_report_sha256=hashlib.sha256((source/'scene.json').read_bytes()).hexdigest(),camera_sha256=hashlib.sha256(camera.read_bytes()).hexdigest(),
         balcony_modulate2x_diagnostic=balcony_modulate2x,package_sha256=hashlib.sha256(blob).hexdigest(),object_count=len(counts),objects=counts,geometry_triangles=sum(counts.values()),
         submitted_triangles=len(expanded)//3,texture_layers=len(image_names),textures=textures,draws=audit,effective_time=time,

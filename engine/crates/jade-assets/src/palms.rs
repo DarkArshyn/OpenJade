@@ -3,6 +3,7 @@ use crate::invalid;
 use std::{io, sync::OnceLock};
 
 pub struct PalmVertex {
+    pub(crate) fixture: Option<crate::fixtures::Fixture>,
     pub index: usize,
     base: [f32; 3],
     angles: [f32; 2],
@@ -25,10 +26,30 @@ pub(crate) fn sine_index(index: usize) -> f32 {
 }
 
 impl PalmVertex {
+    pub(crate) fn fixture(index: usize, base: [f32; 3], fixture: crate::fixtures::Fixture) -> Self {
+        Self {
+            index,
+            base,
+            fixture: Some(fixture),
+            angles: [0.; 2],
+            rate: 0.,
+            phase: 0.,
+            axes: [[0.; 3]; 2],
+            quarter: 0,
+        }
+    }
+
     pub fn advance(&mut self, dt: f32) {
+        if let Some(fixture) = &mut self.fixture {
+            fixture.advance(dt);
+            return;
+        }
         self.phase = (self.phase + self.rate * 30. * dt).rem_euclid(std::f32::consts::TAU);
     }
     pub fn position(&self) -> [f32; 3] {
+        if let Some(fixture) = &self.fixture {
+            return fixture.position(self.base);
+        }
         let a = wave(self.angles[0] + self.phase, 0);
         let b = wave(self.angles[1] + self.phase, self.quarter);
         std::array::from_fn(|i| self.base[i] + a * self.axes[0][i] + b * self.axes[1][i])
@@ -52,6 +73,7 @@ pub(crate) fn decode(bytes: &[u8], vertices: &[f32]) -> io::Result<Vec<PalmVerte
         }
         previous = Some(index);
         result.push(PalmVertex {
+            fixture: None,
             index,
             base: vertices[index * 9..index * 9 + 3].try_into().unwrap(),
             angles: [values[0], values[1]],
@@ -84,6 +106,7 @@ mod tests {
     #[test]
     fn signed_phase_and_local_axes() {
         let mut v = PalmVertex {
+            fixture: None,
             index: 0,
             base: [4., 5., 6.],
             angles: [0.; 2],

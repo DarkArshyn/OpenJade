@@ -52,8 +52,9 @@ There is no controllable Prince, cutscene playback or level loading.
 
 The scenery includes 50 decoded objects, textures, depth testing, three fog panels
 and multi-pass light-fixture materials:
+- Two dynamic fog emitters now add moving transparent mist alongside the existing panels.
 - Supported fog and flame-texture offsets
-animate in real time.
+animate in real time. The two suspended flames also deform using their decoded vertex animations.
 - Seven palms, three additional plants and the hanging vine move using their decoded vertex deformation. Three mesh birds follow their waypoint loops and flap their wings. Two bird particle emitters and two fly swarms also animate in the menu. Drifting points of light come from a separate pollen emitter.
 - Eight splash emitters animate alongside the two falling-rain emitters. The rain uses decoded parameters and verified particle geometry, colors and blending; timing remains under comparison.
 - A measured scene-blur effect softens the 3D background while keeping the menu interface sharp.
@@ -61,7 +62,7 @@ animate in real time.
 - Lighting, transparency ordering and visual fidelity remain under investigation; this is not a faithful recreation yet.
 - The sky and moon are now included; some small effects remain absent.
 - Named scene lights are not yet reproduced as runtime lights; recorded vertex colors provide
-part of the current appearance.
+part of the current appearance. The objects affected by dynamic lighting are being verified against the original game.
 
 The detailed menu screens now run in the native viewer alongside the 3D scenery:
 - Gamma, texture filtering, window resolution and V-Sync can be changed there,
@@ -80,7 +81,7 @@ with mouse/keyboard navigation, profile creation/selection, Controls, Game, Grap
 
 Original credits remain an explicit notice and Load Game is unavailable.
 
-Text and widgets are composed in Rust using locally prepared MFT/DDS resources. The logo and cursor retain their original image dimensions, and text selects among twelve bitmap font variants as the window grows; the interface uses linear filtering.
+Text and widgets are composed in Rust using locally prepared MFT/DDS resources. The logo and cursor retain their original image dimensions, and text selects among twelve bitmap font variants as the window grows; the interface uses linear filtering. The cursor now combines its original base and glowing overlay with animation read from the menu resources.
 
 Captures and generated asset bundles remain local and are not included in the
 repository.
