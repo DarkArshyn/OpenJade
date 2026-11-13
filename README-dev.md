@@ -2,7 +2,7 @@
 
 [Project overview](README.md)
 
-Current implementation status: **2026-11-10**. Original game inputs remain read-only.
+Current implementation status: **2026-11-13**. Original game inputs remain read-only.
 
 Latest completed work: dynamic fog emitters and MGM-driven cursor glow in Vulkan.
 Earlier work includes original logo/cursor pixel dimensions, linear UI filtering
@@ -353,10 +353,51 @@ scaled by 1/256; GAO instance colors are a different buffer. All 124 captured
 now animates 672 expanded corners across both flame passes of the two fixtures.
 Its native Rust replay checks 41,664 corners; fixed-time captures and the 80-frame
 resize/transition smoke pass with zero Vulkan validation errors. Keep `menu.fixtures`
-with the prepared scene. Native startup from zero and 4,804 phase updates are now verified bit-for-bit using captured engine deltas. Independent wall-clock/video alignment remains unverified. A bounded
-lighting capture records 341 accumulation calls on 11 unresolved objects, while
+with the prepared scene. Native startup from zero and 4,804 phase updates are now verified bit-for-bit using captured engine deltas. Independent wall-clock/video alignment remains unverified. [receiver identification](docs/observations/2026-11-11-menu-light-receivers.md)
+resolves the 341 accumulation calls to 11 Prince-related components (nine under
+Prince.gao, plus the low-resolution head and holder), while
 identified balcony, trunk and fixture draws retain cached colors. This does not
 validate global lighting parity or justify adding illumination to every object.
+
+The [GPU light-contribution measurement](docs/observations/2026-11-11-menu-light-contributions.md)
+checks 24 native draws across those eleven components. Neutralizing each transmitted
+light color changes pixels for the moon on 11 components, the room light on 9 and the
+brasero on 10 in the sampled menu pose. The native path also adds a generated directional
+light outside the three-entry private list; its contribution and the separate c25
+constant affect all eleven components. Repeated baselines are identical. These are
+per-draw measurements, not final fog/postprocessing parity. Actor rendering and these
+runtime light terms remain unimplemented; cached scenery colors are unchanged.
+`tests/integration_light_contributions.py` validates the local captures and bindings.
+
+The [ambient and generated-direction follow-up](docs/observations/2026-11-12-actor-light-terms.md)
+traces c25 to the private lighting cache and validates the additional direction through
+receiver-local and GPU transformations: 121 samples across eleven components and 506
+draws, with maximum direction error below `1.6e-7`. The native atan call is verified
+despite an ambiguous decompiler label. The read-only
+`tests/integration_actor_light_terms.py` reproduces these checks.
+
+The [initial ambient-cache and shader capture](docs/observations/2026-11-13-ambient-cache-shaders.md)
+now establishes the source through the balcony fallback to `Menu3D_LUM_Ambiant`, with
+three captured cache allocations. CPU replay of the captured programs agrees with the
+independent lighting formula on 2,434 vertex instances across 24 draws. Material paths
+include doubled texture/diffuse modulation, a constant-color dagger pass and a two-texture
+sword shader. `tests/integration_ambient_shader.py` verifies these findings. This is
+arithmetic validation, not final GPU pixel parity; cached scenery colors remain unchanged.
+
+The [first isolated actor-component preview](docs/observations/2026-11-13-actor-head-preview.md)
+now renders a frozen head sample in the existing Vulkan viewer: 550 triangles and its
+native 512x512 texture, with reconstructed pose and lighting baked into the export.
+The aligned native/Vulkan comparison measures mean RGB error 0.209/255 over the occupied
+area and silhouette IoU 0.99943, with zero validation errors. This is a capture-driven
+diagnostic, not a native actor loader, runtime skinning or dynamic actor lighting.
+`src/export_actor_head_preview.py` prepares the local sample and
+`tests/integration_actor_head_vulkan.py` reproduces the GPU comparison.
+
+From `engine/`, launch the prepared isolated head sample:
+
+```powershell
+cargo run -p jade-viewer -- --scene ../reports/actor-head-20261113/head.ojscene --color-pipeline legacy-unorm --validation
+```
 
 From `engine/`, launch the prepared fixture package:
 

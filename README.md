@@ -62,7 +62,7 @@ animate in real time. The two suspended flames also deform using their decoded v
 - Lighting, transparency ordering and visual fidelity remain under investigation; this is not a faithful recreation yet.
 - The sky and moon are now included; some small effects remain absent.
 - Named scene lights are not yet reproduced as runtime lights; recorded vertex colors provide
-part of the current appearance. The objects affected by dynamic lighting are being verified against the original game.
+part of the current appearance. An isolated, frozen head sample can now be rendered and compared with the original game. Full character rendering, animation and runtime actor lighting remain unimplemented.
 
 The detailed menu screens now run in the native viewer alongside the 3D scenery:
 - Gamma, texture filtering, window resolution and V-Sync can be changed there,

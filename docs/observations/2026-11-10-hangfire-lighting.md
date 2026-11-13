@@ -63,3 +63,7 @@ This audit does not prove that all light contributions are baked, that every ren
 - Prince animation, complete effect ordering and final visual parity remain outstanding.
 
 This loading audit itself made no renderer or global-light changes. The subsequent fixture integration is documented separately above.
+
+## Follow-up: receiver identities (2026-11-11)
+
+A [new identity capture](2026-11-11-menu-light-receivers.md) resolves the eleven render components to Prince-related GAOs and meshes. This supersedes the unresolved-identity status above. Effective light lists and nonzero contributions remain unverified; the earlier pointers cannot all be individually mapped across sessions from vertex counts alone.
