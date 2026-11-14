@@ -419,6 +419,18 @@ impl Presenter {
             d.reset_command_buffer(self.command, vk::CommandBufferResetFlags::empty())?;
             d.begin_command_buffer(self.command, &vk::CommandBufferBeginInfo::default())?;
             let now = std::time::Instant::now();
+            let actor_positions = self
+                .scene
+                .as_ref()
+                .and_then(|s| s.actor.as_ref())
+                .map(|a| {
+                    a.positions(
+                        self.fixed_seconds
+                            .map(f64::from)
+                            .unwrap_or_else(|| self.material_clock.elapsed().as_secs_f64()),
+                    )
+                })
+                .unwrap_or_default();
             let (palms, curtain, mut rain, mut splash, mut birds, mut pollen, mut fog, mut flight) =
                 self.scene.as_mut().map_or(
                     (&mut [][..], &mut [][..], None, None, None, None, None, None),
@@ -484,6 +496,7 @@ impl Presenter {
                 self.gamma,
                 (&self.native_ui, &self.native_opacities),
                 AnimationFrame {
+                    actor: &actor_positions,
                     elapsed: self
                         .fixed_seconds
                         .map(f64::from)

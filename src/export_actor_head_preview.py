@@ -13,14 +13,15 @@ import struct
 import numpy as np
 from PIL import Image
 from replay_actor_vertex_shader import formula
+from actor_head_texture import load_head_texture
 
 
-def export(capture, output, clamp=True, pixel_offset=.5):
+def export(capture, output, source, clamp=True, pixel_offset=.5):
     if output.exists():
         raise FileExistsError(output)
     prefix=capture.name
     lines=(capture/f'{prefix}-reference.txt').read_text().splitlines()
-    assert 'draw_hr 00000000' in lines and 'texture_copy 00000000 00000000' in lines
+    assert 'draw_hr 00000000' in lines
     target=lines[0].split()[1].lower()
     registry=list(struct.iter_unpack('<5I',(capture/f'{prefix}-registry.bin').read_bytes()))
     object_lines=(capture/f'{prefix}-object-{target}.txt').read_text().splitlines()
@@ -74,7 +75,8 @@ def export(capture, output, clamp=True, pixel_offset=.5):
     z=eye[2]+50
     corners=[[eye[0]+x,eye[1]+y,z,0,0,0,0,0,0] for x,y in [(-100,-100),(100,-100),(100,100),(-100,100)]]
     vertices=[corners[i] for i in (0,1,2,0,2,3)]+[values[int(i)] for i in ids]
-    texture=np.fromfile(capture/'mask-00-000-actor-head2-texture.bgra',np.uint8).reshape(512,512,4)[:,:,[2,1,0,3]]
+    levels,texture_source=load_head_texture(source)
+    texture=levels[0]
     blob=bytearray(b'OJSCN003')+struct.pack('<4I13f',len(vertices),512,512,1,*camera)
     blob+=np.asarray(vertices,dtype='<f4').tobytes()+texture.tobytes()+struct.pack('<I',2)
     for first,count,gain in [(0,6,1.),(6,1650,2.)]:
@@ -88,11 +90,11 @@ def export(capture, output, clamp=True, pixel_offset=.5):
     report=dict(component='M_Pr_Face.gao',mesh='0x13008483',triangles=550,render_vertices=417,
                 referenced_vertices=len(values),texture_size=[512,512],camera=camera,vertex_color_clamp=clamp,
                 unclamped_lighting_max=light_max,pixel_center_offset=pixel_offset,
-                scene_sha256=hashlib.sha256(blob).hexdigest(),
-                inputs={path.name:hashlib.sha256(path.read_bytes()).hexdigest() for path in [meta,meta.with_suffix('.constants'),meta.with_suffix('.stream0'),meta.with_suffix('.indices'),capture/f'{prefix}-reference.txt',capture/'mask-00-000-actor-head2-texture.bgra',capture/'mask-00-000-actor-head2.bgra']},
+                scene_sha256=hashlib.sha256(blob).hexdigest(),texture_source=texture_source,
+                inputs={path.name:hashlib.sha256(path.read_bytes()).hexdigest() for path in [meta,meta.with_suffix('.constants'),meta.with_suffix('.stream0'),meta.with_suffix('.indices'),capture/f'{prefix}-reference.txt',capture/'mask-00-000-actor-head2.bgra']},
                 limitations=['Frozen captured skeleton pose and per-vertex lighting; no actor animation or dynamic runtime lighting.',
                              'Isolated close-up in captured view coordinates; no menu integration, occluders or fog.',
-                             'Base texture copied from the native GPU; native archive texture identity is not resolved.'])
+                             'Texture loaded from original indexed resource 1300663D and palette 13013D34; seven mipmaps decoded, only the base level stored in this diagnostic scene.'])
     (output/'manifest.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     return report
 
@@ -100,6 +102,7 @@ def export(capture, output, clamp=True, pixel_offset=.5):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('capture',type=Path);parser.add_argument('output',type=Path)
+    parser.add_argument('--source',type=Path,required=True,help='Decoded original Prince FF0C0226 resource')
     parser.add_argument('--unclamped',action='store_true')
     parser.add_argument('--pixel-center-offset',type=float,choices=[0.,.5],default=.5)
-    args=parser.parse_args();print(json.dumps(export(args.capture,args.output,not args.unclamped,args.pixel_center_offset),indent=2))
+    args=parser.parse_args();print(json.dumps(export(args.capture,args.output,args.source,not args.unclamped,args.pixel_center_offset),indent=2))

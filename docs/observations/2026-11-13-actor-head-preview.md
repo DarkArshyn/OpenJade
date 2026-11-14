@@ -44,7 +44,7 @@ These measurements compare isolated rendered pixels, unlike the earlier CPU arit
 Export with Python, NumPy and Pillow, using the private completed `actor-head2` capture directory:
 
 ```powershell
-python src/export_actor_head_preview.py <actor-head2> reports/actor-head-20261113
+python src/export_actor_head_preview.py <actor-head2> reports/actor-head-20261113 --source <FF0C0226-decoded/decoded.bin>
 ```
 
 The exporter refuses to overwrite an existing output directory. The generated manifest records the native inputs' SHA-256 hashes, geometry counts, camera, raster correction and limitations.
@@ -67,9 +67,33 @@ The research-copy proxy was restored after capture; its hash matches the saved o
 
 ## Remaining work
 
-- Resolve the captured head texture back to its original archive resource rather than relying on a GPU readback.
+- Replace remaining captured geometry, skeletal pose and lighting with original-resource loading and runtime evaluation.
 - Export actor geometry and transforms directly from original resources, with traceable skeleton/pose inputs.
 - Move skinning and actor lighting into the runtime, then integrate the remaining components and material variants.
 - Compare the complete actor in the menu with original depth, fog, occlusion and animation.
 
 The frozen sample should remain a reference fixture while those runtime capabilities are implemented.
+
+## Original face texture loading
+
+The exporter now reads pixels from decoded original Prince resource `FF0C0226`.
+The validated chain is `13005EEA` (M_Pr_Face.gao), material pack `13005EE2`
+(slot 0), material `1300848A`, texture `1300663D`, palette `13013D34`.
+The full texture record at decoded offset 2873650 contains 349564 bytes;
+a separate 60-byte declaration has the same key. Format 1 stores byte indices
+at +60, with seven mip levels from 512x512 through 8x8. The palette contains
+its key followed by 256 BGRA entries. All 1048576 RGBA channel values of the
+base level match the independent GOG readback exactly. The exported scene is
+byte-identical to the previous scene; no additional GPU run was needed.
+
+Decoded source SHA-256:
+`6a2886cc69d194bbbd526184ca2a217c4575b43ffe7453fbeea2f0f151f1e7a5`.
+The manifest records source hash, offsets, keys and mip dimensions.
+The reader is bounded to this observed layout, not all indexed textures.
+
+```powershell
+python tests/integration_actor_head_texture.py <FF0C0226-decoded/decoded.bin> <actor-head2> reports/actor-head-20261113/head.ojscene
+```
+
+Only the base mip is currently exported into this diagnostic scene. Geometry,
+pose and lighting still depend on captures. The original archive is read-only.

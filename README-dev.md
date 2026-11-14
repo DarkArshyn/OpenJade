@@ -2,7 +2,7 @@
 
 [Project overview](README.md)
 
-Current implementation status: **2026-11-13**. Original game inputs remain read-only.
+Current implementation status: **2026-11-14**. Original game inputs remain read-only.
 
 Latest completed work: dynamic fog emitters and MGM-driven cursor glow in Vulkan.
 Earlier work includes original logo/cursor pixel dimensions, linear UI filtering
@@ -54,7 +54,7 @@ is `game/TSoT-GOG`; no path is a bundled dependency or permission to redistribut
 | 4. Screen behavior | Document layout, colors, order and dependencies against original observations | Partial: MGM evidence and seventeen 800x600 screenshots; some behavior remains reconstructed |
 | 5. First rendered screen | Render reconstructed UI and original resources with independent code | Native detailed menu UI overlays 50 decoded 3D objects. Native scene texture dimensions, filtering/mipmap and color-pipeline comparisons, plus post-composition gamma are implemented. Lighting/fog fidelity and high-resolution UI remain unfinished |
 | 6. Interactive menu | Reproduce selection, input, navigation and transitions | Native detailed screens, profile creation/selection/deletion, keyboard-binding capture, settings/quit confirmations and Camera02 playback. Gamma, filtering, window resolution and V-Sync affect the viewer; committed preferences/profiles persist in an OpenJade file. Unsupported systems remain disabled; binding storage is not gameplay input |
-| 7. Game systems | Implement scene/object/animation/collision/audio/gameplay with tests | Early rendering runtime: depth, textures, fog/fixture passes, scene blur, partial masked additive composition, explicit color paths and gamma; baked Camera02 playback, palm/curtain deformation and two native rain emitters. General animation, remaining particle effects, collision, audio, actors and gameplay are unimplemented. Native lighting fidelity and rain synchronization remain unresolved |
+| 7. Game systems | Implement scene/object/animation/collision/audio/gameplay with tests | Early rendering runtime: depth, textures, fog/fixture passes, scene blur, partial masked additive composition, explicit color paths and gamma; baked Camera02 playback, palm/curtain deformation and two native rain emitters. An isolated Prince diagnostic evaluates original skeleton/animation keys in Rust; secondary controllers, animated lighting and weapon attachments remain incomplete. General actor behavior, menu integration, collision, audio and gameplay remain unimplemented. Native lighting fidelity and rain synchronization remain unresolved |
 | 8. Native ports | Build and validate Linux/macOS | Not started |
 
 No reliable overall completion percentage is available. Test counts and resource
@@ -392,12 +392,57 @@ area and silhouette IoU 0.99943, with zero validation errors. This is a capture-
 diagnostic, not a native actor loader, runtime skinning or dynamic actor lighting.
 `src/export_actor_head_preview.py` prepares the local sample and
 `tests/integration_actor_head_vulkan.py` reproduces the GPU comparison.
+The face texture now loads from original Prince resource `FF0C0226`: indexed
+texture `1300663D` and palette `13013D34`. Its RGBA pixels match the GOG readback
+exactly. Seven mips are decoded; this diagnostic exports the base level only.
+The exporter requires `--source <decoded-Prince-resource>`.
+`tests/integration_actor_head_texture.py` checks pixels and unchanged scene bytes.
+The older head fixture still uses captured geometry, pose and lighting. The full-body exporter below replaces geometry and texture buffers with original-resource loading.
+
 
 From `engine/`, launch the prepared isolated head sample:
 
 ```powershell
 cargo run -p jade-viewer -- --scene ../reports/actor-head-20261113/head.ojscene --color-pipeline legacy-unorm --validation
 ```
+
+The [Prince resource preview](docs/observations/2026-11-13-prince-resource-preview.md)
+extends this to eleven observed components: 2,933 triangles across 24 draws,
+with six original base textures. `src/prince_resources.py` loads original geometry,
+UVs, normals, packed skin weights and material/texture links. The differential test
+matches all oriented triangles, UVs, normals and weights exactly to native inputs.
+`src/export_prince_preview.py` still uses captured pose and lighting constants;
+it does not require captured geometry or texture buffers. Separate hair and a second
+face group are inventoried but were not drawn in the selected native frame.
+Vulkan now supports the actor's source-over passes with depth writes. Sword reflection
+and runtime slot remapping remain unresolved; this is not final pixel parity.
+
+```powershell
+# Run from engine after preparing the local fixture.
+cargo run -p jade-viewer -- --scene ../reports/prince-preview-20261113/prince.ojscene --color-pipeline legacy-unorm --validation
+```
+
+Validation: `tests/test_prince_resources.py`, `tests/integration_prince_resources.py`
+and `tests/integration_prince_vulkan.py`. The observation document lists extraction
+inputs, command arguments, coverage and remaining capture dependencies.
+
+The [source-skeleton animation diagnostic](docs/observations/2026-11-14-prince-skeletal-animation.md)
+now evaluates 62 body bones and 35 body transform channels from the original 37-track
+clip. `src/export_prince_animation.py` writes the source-derived `.actor` sidecar;
+Rust interpolates keys, composes the hierarchy and skins positions every frame.
+The ten-component animated preview has 2,769 triangles, including the sword and its support. Neutral facial joints follow
+the head; untracked secondary joints keep resource-local transforms. The sword uses its source snap transform composed with Spine2, validated against eleven native poses (maximum matrix-component error 2.60e-6). The support joints use the original sheathed clip `3F000E32`, matching eleven native samples within 4.36e-6. The dagger local orientation is resolved, but it remains omitted until the secondary sheath controller is reproduced. Captured lighting remains fixed. The chosen
+clip repeats as a diagnostic; native action selection and loop semantics are unverified.
+
+```powershell
+# From engine/, keep prince.actor beside prince.ojscene.
+cargo run -p jade-viewer -- --scene ../reports/prince-holder-animation-20261114/prince.ojscene --color-pipeline legacy-unorm --validation
+```
+
+Validation: four Python unit tests, eleven native palette samples, seven Rust/Python
+pose comparisons (maximum position difference 4.77e-7), and Vulkan captures at four
+fixed times without validation errors. See the observation for reproducible commands,
+private fixture requirements and limits; this is not full native pixel parity.
 
 From `engine/`, launch the prepared fixture package:
 

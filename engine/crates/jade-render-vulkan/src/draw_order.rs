@@ -42,7 +42,7 @@ impl DrawOrder {
         let mut indices: Vec<usize> = (0..draws.len()).collect();
         indices.sort_by(|&a, &b| {
             let phase = |blend| match blend {
-                0 => 0,
+                0 | 8 => 0,
                 7 => 1,
                 _ => 2,
             };
@@ -71,6 +71,19 @@ mod tests {
         let mut camera = [0.; 20];
         camera[14] = 1.;
         assert_eq!(order.indices(&d, &camera), vec![2, 0, 1]);
+    }
+    #[test]
+    fn actor_depth_writing_passes_retain_submission_order() {
+        let (v, d) = fixture(&[
+            (0, [0., 0., 1.]),
+            (8, [0., 0., 9.]),
+            (0, [0., 0., 2.]),
+            (1, [0., 0., 5.]),
+        ]);
+        let order = DrawOrder::new(&v, &d);
+        let mut camera = [0.; 20];
+        camera[14] = 1.;
+        assert_eq!(order.indices(&d, &camera), vec![0, 1, 2, 3]);
     }
     fn fixture(rows: &[(u32, [f32; 3])]) -> (Vec<f32>, Vec<Draw>) {
         let mut vertices = Vec::new();

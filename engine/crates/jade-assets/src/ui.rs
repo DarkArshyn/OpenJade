@@ -340,6 +340,7 @@ mod invalid_bundle_tests {
     #[test]
     fn malformed_bundle_does_not_mutate_scene() {
         let mut scene = Scene {
+            actor: None,
             leaf: None,
             menu_blur: true,
             rain: None,

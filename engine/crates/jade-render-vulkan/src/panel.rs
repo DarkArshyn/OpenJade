@@ -18,6 +18,7 @@ use texture_resource::Texture;
 
 pub(super) struct AnimationFrame<'a> {
     pub elapsed: f64,
+    pub actor: &'a [(usize, [f32; 3])],
     pub palms: &'a [jade_assets::palms::PalmVertex],
     pub curtain: &'a [jade_assets::rido2::Curtain],
     pub rain: [Option<&'a jade_assets::rain::Rain>; 5],
@@ -717,6 +718,7 @@ impl Panel {
                 (vk::BlendFactor::ONE_MINUS_SRC_ALPHA, false),
                 (vk::BlendFactor::ONE, false),
                 (vk::BlendFactor::ONE_MINUS_SRC_ALPHA, false),
+                (vk::BlendFactor::ONE_MINUS_SRC_ALPHA, true),
             ] {
                 let attachment = [vk::PipelineColorBlendAttachmentState::default()
                     .blend_enable(true)
@@ -809,6 +811,7 @@ impl Panel {
         let (ui, opacities) = ui_frame;
         let AnimationFrame {
             elapsed,
+            actor,
             palms,
             curtain,
             rain,
@@ -831,7 +834,8 @@ impl Panel {
         {
             return Err(vk::Result::ERROR_UNKNOWN);
         }
-        if !ui.is_empty()
+        if !actor.is_empty()
+            || !ui.is_empty()
             || !palms.is_empty()
             || !curtain.is_empty()
             || rain.iter().any(Option::is_some)
@@ -845,6 +849,9 @@ impl Panel {
                 vk::WHOLE_SIZE,
                 vk::MemoryMapFlags::empty(),
             )?;
+            for (index, xyz) in actor {
+                std::ptr::copy_nonoverlapping(xyz.as_ptr(), ptr.cast::<f32>().add(index * 9), 3);
+            }
             for rain in rain.into_iter().flatten() {
                 std::ptr::copy_nonoverlapping(
                     rain.vertices.as_ptr(),
@@ -990,6 +997,7 @@ impl Panel {
                     1 => self.blended[0],
                     6 => self.blended[1],
                     7 => self.blended[2],
+                    8 => self.blended[3],
                     _ => self.pipeline,
                 };
                 d.cmd_bind_pipeline(command, vk::PipelineBindPoint::GRAPHICS, pipeline);
@@ -1122,7 +1130,7 @@ impl Panel {
                 d.cmd_draw(command, 6, 1, vertex, 0);
             }
         }
-        if !ui.is_empty() {
+        if !actor.is_empty() || !ui.is_empty() {
             let parameters = [1f32, 1., 0., 0., 1., 1., 0., 0., 0.];
             let bytes: Vec<u8> = parameters.iter().flat_map(|v| v.to_ne_bytes()).collect();
             d.cmd_bind_pipeline(command, vk::PipelineBindPoint::GRAPHICS, self.ui_pipeline);

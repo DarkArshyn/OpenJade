@@ -1583,6 +1583,7 @@ mod tests {
     fn fixture() -> (Vec<u8>, Scene) {
         let camera = [0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1., 59.37908];
         let scene = Scene {
+            actor: None,
             leaf: None,
             menu_blur: true,
             rain: None,

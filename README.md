@@ -62,7 +62,7 @@ animate in real time. The two suspended flames also deform using their decoded v
 - Lighting, transparency ordering and visual fidelity remain under investigation; this is not a faithful recreation yet.
 - The sky and moon are now included; some small effects remain absent.
 - Named scene lights are not yet reproduced as runtime lights; recorded vertex colors provide
-part of the current appearance. An isolated, frozen head sample can now be rendered and compared with the original game. Full character rendering, animation and runtime actor lighting remain unimplemented.
+part of the current appearance. An isolated Prince preview now evaluates body animation and a skeleton-attached sword from original resources. A separate frozen reference includes weapons. Secondary clothing motion, animated lighting, complete attachments and integration into the menu remain unfinished.
 
 The detailed menu screens now run in the native viewer alongside the 3D scenery:
 - Gamma, texture filtering, window resolution and V-Sync can be changed there,
@@ -99,6 +99,7 @@ See the [native prototype workflow](README-dev.md#native-menu-prototype) and the
 | Camera02 | Nine-second transition sampled from decoded tracks and played by the native viewer | Baked 60 Hz poses; no original scripting runtime or gameplay trigger chain |
 | Scene materials | Textures, depth, fog, scene blur, partial masked glow and multi-pass fixture blending | Original lighting, remaining particle effects and exact filtering remain unresolved |
 | Menu rain | Two animated emitters with native textures and three life phases | Random sequence and scene-wide timing are not synchronized with the original |
+| Prince preview | Original-resource body animation with sword and articulated support in an isolated Rust/Vulkan view; separate frozen reference with weapons | Partial: secondary motion, dagger in the animated preview, animated lighting, menu integration and gameplay remain unfinished |
 | Validation | Synthetic tests, Vulkan validation and local visual checks | Windows/AMD tested; no Linux/macOS validation |
 
 ## Development approach

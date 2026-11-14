@@ -8,7 +8,7 @@ use std::{
 pub struct Draw {
     pub first: u32,
     pub count: u32,
-    /// 0 = opaque, 1 = source-over, 6 = source-alpha additive.
+    /// 0 = opaque, 1 = source-over, 6 = additive, 7 = leaf, 8 = source-over with depth writes.
     pub blend: u32,
     /// 0 disables fog, 1 uses the normal GOG range, 2 inverts it.
     /// Runtime rain adds 4 to enable per-vertex alpha (not an OJSCN file flag).
@@ -29,6 +29,7 @@ pub enum ColorPipeline {
     Srgb,
     LegacyUnorm,
 }
+pub mod actor;
 pub mod curtain_field;
 mod fixtures;
 pub mod flight;
@@ -37,6 +38,7 @@ pub mod palms;
 pub mod rain;
 pub mod rido2;
 pub struct Scene {
+    pub actor: Option<actor::Actor>,
     pub rain: Option<rain::Rain>,
     pub splashes: Option<rain::Rain>,
     pub birds: Option<rain::Rain>,
@@ -82,6 +84,15 @@ impl Scene {
         let mut bytes = Vec::new();
         file.take(256 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
         let mut scene = Self::decode(&bytes)?;
+        match std::fs::File::open(path.with_extension("actor")) {
+            Ok(file) => {
+                let mut control = Vec::new();
+                file.take(32 * 1024 * 1024 + 1).read_to_end(&mut control)?;
+                scene.actor = Some(actor::Actor::decode(&control, scene.vertices.len() / 9)?);
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
         for extension in ["rido1", "rido2", "rido3", "rido4"] {
             match std::fs::File::open(path.with_extension(extension)) {
                 Ok(file) => {
@@ -370,7 +381,7 @@ impl Scene {
                         .is_none_or(|end| end > vertices.len() as u32 / 9)
                     || !matches!(
                         (blend, write),
-                        (0, 1 | 3 | 5) | (7, 0 | 2 | 4) | (1, 0 | 2 | 4) | (6, 0)
+                        (0, 1 | 3 | 5) | (7, 0 | 2 | 4) | (1, 0 | 2 | 4) | (6, 0) | (8, 1 | 3 | 5)
                     )
                     || !parameters.iter().all(|f| f.is_finite())
                     || !(0.0..=1.0).contains(&parameters[4])
@@ -407,6 +418,7 @@ impl Scene {
         Ok(Self {
             leaf: None,
             trunk_mips: None,
+            actor: None,
             curtains: Vec::new(),
             palms: palms::decode(palm_bytes, &vertices)?,
             uv_rates,
@@ -602,6 +614,22 @@ mod material_tests {
         }
     }
     #[test]
+    fn actor_source_over_requires_depth_writes() {
+        let mut b = package();
+        let start = 76 + 3 * 36 + 4 + 4;
+        b[start + 8..start + 12].copy_from_slice(&8u32.to_le_bytes());
+        for flags in [1u32, 3, 5] {
+            b[start + 12..start + 16].copy_from_slice(&flags.to_le_bytes());
+            let scene = Scene::decode(&b).unwrap();
+            assert_eq!(scene.draws[0].blend, 8);
+            assert_eq!(scene.draws[0].vertex_fog, flags >> 1);
+        }
+        for flags in [0u32, 2, 4] {
+            b[start + 12..start + 16].copy_from_slice(&flags.to_le_bytes());
+            assert!(Scene::decode(&b).is_err());
+        }
+    }
+    #[test]
     fn reads_transparent_draw() {
         let s = Scene::decode(&package()).unwrap();
         assert_eq!(s.draws[0].blend, 1);
@@ -642,6 +670,7 @@ mod native_texture_tests {
             camera: [0.; 13],
             leaf: None,
             trunk_mips: None,
+            actor: None,
             curtains: Vec::new(),
             palms: vec![],
             uv_rates: vec![],
