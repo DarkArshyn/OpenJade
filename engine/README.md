@@ -1,233 +1,583 @@
-# OpenJade engine bootstrap
+# OpenJade Native Engine
 
-Target: Rust + ash + Vulkan on Windows as host.
+[Project overview](../README.md) · [Developer guide](../README-dev.md) · [Research observations](../docs/observations/)
 
-This workspace now opens a **Vulkan presentation window** and retains the CLI adapter probe.
-The window renders a centered **textured square (two triangles)** on a blue-grey background.
-Its original 128x128 RGBA checkerboard is uploaded to a Vulkan image and sampled by a fragment shader.
-Expected corner colors: red top-left, green top-right, blue bottom-left, yellow bottom-right.
-The square retains its proportions when resized. With `--scene`, the viewer instead
-renders decoded menu geometry with textures, vertex colors, depth testing and a fixed camera.
-Rust 1.99.1, Cargo 1.99.1 and MSVC C++ tools are installed and verified. The workspace compiled and the probe ran
-successfully with validation enabled: AMD Radeon RX 9070 XT, Vulkan 1.4.349, one graphics-capable queue family.
+**Documentation snapshot: 2026-11-14**
 
-The 2026-10-27 textured-panel smoke run presented 80 frames, resized from 800x600 to 1024x720
-and back to 800x600, then shut down with zero validation errors. Clippy with
-warnings denied passed. Minimization and other GPU/OS combinations remain
-unverified by this automated test. Validation success alone does not prove pixel correctness.
+The `engine/` directory contains OpenJade's experimental native engine implementation, developed in **Rust** with **Vulkan** rendering through `ash`.
 
-## Prerequisites and first build
+The current implementation focuses on reconstructing selected functionality of Ubisoft's Jade Engine, using *Prince of Persia: The Sands of Time* (PC GOG edition) as its initial reference.
 
-- Rust via rustup, x86_64-pc-windows-msvc.
-- Visual Studio C++ desktop development tools and Windows SDK.
-- A working Vulkan driver; Vulkan SDK for validation and shader tools.
-- `glslc` from the SDK, found through `VULKAN_SDK` or `PATH`. Cargo compiles
-  the GLSL sources in `crates/jade-render-vulkan/shaders/` into SPIR-V automatically.
-  Generated shaders stay in Cargo build output and are embedded in the executable.
+The Rust workspace currently provides:
 
-From this directory:
+- Native Vulkan rendering of decoded 3D scenes, textures and materials.
+- An interactive main menu with profiles, configurable display settings and local persistence.
+- Camera02 playback and selected runtime animations.
+- Animated vegetation, curtains, particles, birds, fog and light-fixture effects.
+- Selected scene postprocessing, including blur and partial additive composition.
+- Experimental Prince rendering, skeletal animation and skinning using original game resources.
+- Bounded resource-package readers, automated tests and diagnostic rendering tools.
 
-```powershell
+> [!IMPORTANT]
+> OpenJade is not yet a playable game.
+>
+> General gameplay, collision, level loading, audio and complete actor systems remain unimplemented.
+>
+> Native rendering and animation experiments do not establish full compatibility or visual fidelity with the original engine.
+
+## Platform support
+
+Windows remains the primary development and integration platform.
+
+Initial native Rust engine validation on Linux and macOS was successfully completed on **2026-11-14**.
+
+| Platform | Validation scope |
+| --- | --- |
+| Windows | Primary development and integration environment. Vulkan rendering and local testing |
+| Linux | Rust workspace built: **67 unit tests passed**. Menu and actor Vulkan rendering verified |
+| macOS | Rust workspace built: **67 unit tests passed**. Menu and Prince rendering verified. Three runtime tests passed |
+
+No Vulkan validation errors were reported during the recorded Linux and macOS checks.
+
+### Tested configurations
+
+**Linux**
+- Manjaro Linux (x86_64).
+- AMD Radeon RX 9070 XT.
+- Mesa RADV Vulkan driver.
+
+**macOS**
+- macOS 27.2.1 on Apple Silicon (M3 Pro).
+- KosmicKrisp Vulkan driver.
+- Vulkan SDK 1.4.363.1.
+- No macOS-specific source modifications required for the tested Rust workspace.
+
+These results apply only to the engine implementation and tested configurations available on the validation date.
+
+Broader Linux and macOS support remains experimental. Future changes, hardware configurations and drivers require independent validation.
+
+PowerShell and Python research tools were not tested on Linux or macOS as part of these validations. Their preparation workflows must not be considered cross-platform validated.
+
+See the [developer guide](../README-dev.md#platform-and-tool-validation) for the validation scope and tooling limitations.
+
+## Prerequisites
+
+### Common requirements
+
+- Rust and Cargo installed through [rustup](https://rustup.rs/).
+- A Vulkan-capable graphics device and working Vulkan driver.
+- The `glslc` shader compiler, provided by the `Vulkan SDK` or an appropriate platform package.
+- Platform-specific development dependencies required by the Rust workspace.
+
+Cargo compiles GLSL shaders from `crates/jade-render-vulkan/shaders/` into SPIR-V during the build. Generated shaders are stored in Cargo build output and embedded in the executable.
+
+### Windows
+
+The primary Windows development environment uses:
+
+- Rust/Cargo 1.99.1.
+- MSVC Rust target (`x86_64-pc-windows-msvc`).
+- Visual Studio C++ development tools and Windows SDK.
+- Vulkan SDK and a compatible Vulkan driver.
+
+The initial validation environment used an AMD Radeon RX 9070 XT.
+
+### Linux
+
+The tested Manjaro Linux development environment uses:
+- Rust/Cargo 1.99.1.
+- Mesa RADV on an AMD Radeon RX 9070 XT.
+- `glslc` provided by the shaderc package.
+- Vulkan development headers and validation layers.
+
+Install the documented development dependencies:
+
+```shell
+sudo pacman -Syu
+sudo pacman -S --needed base-devel git rustup shaderc vulkan-headers vulkan-validation-layers pkgconf wayland libxkbcommon libxcb
+```
+
+On an AMD GPU using Mesa RADV, ensure that the vulkan-radeon driver package is installed:
+
+```shell
+sudo pacman -S --needed vulkan-radeon
+```
+
+If Rust has not yet been configured, install the default stable toolchain:
+
+```shell
+rustup default stable
+```
+
+Verify the available tools:
+
+```shell
+rustc --version
+cargo --version
+glslc --version
+```
+
+The listed packages reflect the tested Manjaro development environment. Package names and dependency requirements may differ across Linux distributions.
+
+These instructions do not establish compatibility with every Linux distribution, GPU or Vulkan driver.
+
+### macOS
+
+The tested macOS development environment uses:
+
+- Rust/Cargo 1.99.1.
+- XCode Command Line Tools.
+- [LunarG Vulkan SDK 1.4.363.1](https://sdk.lunarg.com/sdk/download/1.4.363.1/mac/vulkansdk-macos-1.4.363.1.zip) with the KosmicKrisp Vulkan driver.
+
+Install the Xcode Command Line Tools:
+
+```shell
+xcode-select --install
+```
+
+Install Rust through rustup if it is not already available:
+
+```shell
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Install the LunarG Vulkan SDK with KosmicKrisp enabled.
+
+After installation, configure the Vulkan environment:
+
+```shell
+# Replace <version> with the installed Vulkan SDK version.
+source "$HOME/VulkanSDK/<version>/setup-env.sh"
+
+# Explicitly select the KosmicKrisp Vulkan driver.
+export VK_DRIVER_FILES="$VULKAN_SDK/share/vulkan/icd.d/libkosmickrisp_icd.json"
+```
+
+Verify the development tools:
+
+```shell
+rustc --version
+cargo --version
+glslc --version
+```
+
+KosmicKrisp uses Apple's Metal API to provide Vulkan functionality on supported Apple Silicon hardware. Khronos has officially deprecated [MoltenVK](https://github.com/KhronosGroup/MoltenVK) and now recommends KosmicKrisp for Vulkan on Apple Silicon Macs.
+
+> [!IMPORTANT]
+> OpenJade's macOS development and validation currently target Apple Silicon (ARM64) exclusively.
+>
+> Intel-based Macs are outside the project's supported and planned validation scope.
+
+### Validation scope
+
+The recorded cross-platform results apply only to the tested Rust engine implementation, hardware, operating systems and Vulkan drivers as of **2026-11-14**.
+
+They do not establish compatibility with future engine revisions or validate the PowerShell and Python research workflows on Linux or macOS.
+
+See [Platform support](#platform-support) and [developer validation](../README-dev.md#platform-and-tool-validation) for details.
+
+## Building and testing
+
+Run the following commands from `engine/`.
+
+### Workspace checks
+
+```shell
 cargo check --workspace
 cargo fmt --all --check
 cargo clippy --workspace -- -D warnings
-cargo run -p jade-viewer -- --probe --validation
-cargo run -p jade-viewer -- --validation
-cargo run -p jade-viewer -- --validation --smoke
-```
-
-Rustup was installed without modifying PATH on the initial host. If needed,
-use `$env:USERPROFILE\.cargo\bin\cargo.exe` explicitly, or configure RustRover
-with that toolchain location.
-
-`Cargo.lock` is generated and should be committed for this application workspace.
-The toolchain is pinned to the tested Rust 1.99.1 release.
-
-## Native menus and Camera02
-
-See [current workflow and controls](../README-dev.md#native-menu-prototype).
-
-```powershell
-cargo run -p jade-viewer -- --scene ../reports/menu-sky-moon-20261030/runtime-final/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --validation
-```
-
-The UI and 3D scene share one render pass/window. UI is alpha blended after the
-scene with depth disabled. OJUI0003 supplies sprite/glyph atlases; Rust composes
-profile, main, options, keyboard/gamepad, game, graphics and sound screens with
-confirmations. Gamma, filtering, window size and V-Sync apply only after Back -> Yes;
-editing and Default Settings change a draft, No discards it, Cancel keeps editing.
-Unsupported controls are disabled. Profiles/preferences persist in an independent
-`.ojmenu` file beside the bundle. No Python controller is needed at runtime.
-Keyboard bindings are stored only; gamepad input and gameplay remain absent.
-Start New Game plays a baked 60 Hz, nine-second Camera02 trajectory and holds the
-balcony pose. Escape resets it. No gameplay follows. Letterboxing preserves 4:3
-rendering and mouse coordinates. The smoke mode accelerates time to exercise the
-transition plus return in 80 frames; ordinary playback uses elapsed real time.
-
-## Decoded menu geometry
-
-The local import tested on 2026-10-27 contains **40 objects / 14,994 triangles / 31
-texture layers**, taken from the existing research export. Camera02 uses its initial
-stored pose and the provisional vertical FOV 59.37908 degrees. No new manual camera
-rotation is applied. Both scene and panel passed the 80-frame resize smoke test
-with zero Vulkan validation errors; the scene was also inspected in the window.
-Five Rust tests and two Python bridge tests pass.
-
-Generate a new local package from the repository root (replace paths for your exports):
-
-```powershell
-python src/export_engine_scene.py reports/menu-fixture-materials-20261025/renders/horizontal-angle reports/camera02-transition-20261026/preview/poses.json reports/engine-menu-20261027
-```
-
-The output directory must not already exist. The command reads existing decoded
-exports; it does not extract archives or modify game files. On the current host the
-package has already been generated. From `engine/`:
-
-```powershell
-cargo run -p jade-viewer -- --scene ../reports/engine-menu-20261027/menu.ojscene --validation
-cargo run -p jade-viewer -- --scene ../reports/engine-menu-20261027/menu.ojscene --validation --smoke
 cargo test --workspace
 ```
 
-Without `--scene`, the original diagnostic panel remains available. Scene data is
-never automatically loaded from the game installation. The package, manifest and
-capture live under ignored `reports/`; `*.ojscene` is also ignored globally.
+These commands check compilation, formatting, Clippy diagnostics and the Rust workspace tests.
 
-The initial version-1 import excluded three fog panels and three fixture objects.
-The newer `export_engine_materials.py` / OJSCN003 import includes all six, with
-source-over fog and two-pass fixtures. Its `--time` selects a fixed material phase
-by default; `--animate-uv` exports OJSCN004 and uses that phase as the initial
-state for runtime UV animation. Legacy packages remain fixed.
-Remaining limits:
-native mipmaps are imported for the verified plante2/tronc1 textures through
-`menu.leaf` / `menu.trunk`; other textures still use base images. OJSCN003 preserves native base dimensions;
-`--texture-filter nearest|linear|trilinear` compares ordinary nearest/base-level,
-linear/base-level (default), and generated trilinear mipmaps. Fog/fixture samplers
-remain linear; UI uses linear/base-level sampling. Colors are
-those of the research export, not verified native lighting. UI and camera playback are enabled with `--menu`; gameplay remains absent. The near/far planes (0.1/1000) are chosen research values.
-See [interchange specification](../docs/formats/engine-scene-interchange.md).
+They are instructions, not a claim that every command was executed on every supported platform.
 
-## Boundaries and milestones
+For platform-specific test results, see [Platform support](#platform-support).
 
-- `jade-assets`: bounded, backend-independent local scene package reader.
-- `jade-render`: backend-independent diagnostic data.
-- `jade-render-vulkan`: ash loader, explicit validation request, instance
-  lifetime and adapter enumeration, plus device/surface/swapchain presentation.
-  The diagnostic panel uses a graphics pipeline, render pass, sampled sRGB image,
-  descriptor set and staging upload. Panel vertices come from the vertex shader;
-  imported scene vertices use a buffer, texture array and camera push constants.
-  Panel resources are currently rebuilt on swapchain recreation for simplicity.
-  One frame is in flight, with a submission fence and per-image presentation
-  semaphores. Out-of-date swapchains are recreated; zero-sized windows skip drawing.
-- `jade-viewer`: winit event loop and diagnostic entry point. Close the window
-  normally, or use --smoke for two automatic resize requests and exit after 80
-  presented frames. Vulkan errors make the smoke process return failure.
-  Game-derived resources are loaded only from an explicit local `--scene` package.
+### Vulkan diagnostic viewer
 
-Next: faithful lighting/materials, remaining settings backed by real systems, UI scaling and general animation systems.
-The [native menu composite audit](../docs/observations/2026-11-03-menu-postprocess.md)
-now identifies missing dynamic fog quads and a fullscreen blurred-scene blend.
-The [blur construction](../docs/observations/2026-11-03-menu-blur-construction.md)
-is now reconstructed in an independent reference from current-frame data, with
-no observed temporal reuse in the measured menu state. The measured blur now runs
-in Vulkan before UI and gamma for native menu packages in `legacy-unorm`; add
-`--no-menu-blur` for comparison. The balcony masked additive chain is partially
-implemented; dynamic fog particles remain pending.
-See [implementation and GPU validation](../docs/observations/2026-11-03-vulkan-menu-blur.md).
-Create `assets/scene/game-specific` crates when their first implemented behavior
-is introduced. Keep the existing research tools in the repository root.
-
-Original assets remain outside source control. Tests of Windows do not establish
-Linux/macOS compatibility. No desktop settings or Vulkan layer registry entries
-are modified by the probe.
-
-## Texture validation
-
-The 39 scene textures use individual GPU images at their decoded dimensions.
-The interchange's padding is never uploaded as texture content. Mipmap generation
-checks sRGB format blit/filter support and fails explicitly if unavailable.
-Generated chains remain diagnostic for textures without native sidecars. The
-verified leaf uses five native levels and the trunk six; regenerate older leaf
-packages to obtain the corrected no-depth-write flags. See the
-[aligned GOG comparison](../docs/observations/2026-11-03-native-mips-aligned.md). GPU resources are still rebuilt on swapchain resize, including each
-texture upload; this prototype path is not optimized yet.
-
-```powershell
-cargo run -p jade-viewer -- --scene ../reports/menu-sky-moon-20261030/runtime-final/menu.ojscene --menu ../reports/engine-ui-20261028/menu.ojui --texture-filter trilinear --validation
+```shell
+cargo run -p jade-viewer -- --validation
 ```
 
-All three settings passed 80-frame resize/Camera02 smoke tests with zero Vulkan
-validation errors on the AMD RX 9070 XT. The checker and OJSCN001 regression runs
-also passed. See [evidence and limitations](../docs/observations/2026-10-28-native-textures.md).
+Without a scene package, the viewer retains its original Vulkan diagnostic panel.
 
-## Color comparison
+The diagnostic displays a textured square on a blue-grey background and can be used to inspect basic presentation, texture sampling and resizing.
 
-Keep the scene and filter identical and compare `--color-pipeline srgb` (default)
-with `--color-pipeline legacy-unorm`. The latter uses UNORM textures and an UNORM
-attachment, including blending, while retaining SRGB_NONLINEAR presentation.
-Neither mode is yet established as the original live menu configuration.
-Without OJUI0003 native menus the default bypasses gamma. Optional `--gamma 0..100` or `--settings PATH`
-emulates the recovered output ramp after composition without changing desktop gamma. Mipmap blits
-use the selected texture format, so prefer `--texture-filter linear` when isolating
-the base-image color comparison. Unsupported presentation formats fail explicitly.
-See [native trace and limits](../docs/observations/2026-10-28-color-pipeline.md).
+This diagnostic is retained for regression testing; it doesn't represent the current scope of the native engine.
 
-## Legacy gamma bridge
+### Automated viewer smoke test
 
-OJUI0003 has native gamma controls and rejects `--settings`. The bridge below
-remains available with the OJUI0001 bundle or scene-only viewer for comparisons.
-
-The Python full-menu simulation can publish a gamma preview/committed value to
-an OpenJade `.ojsettings` file. Run it first, then pass that same file to
-`jade-viewer --settings PATH`. The viewer polls at 100 ms and retains its last
-valid value on a malformed/missing update. Only gamma is linked so far.
-`--gamma 0..100` is an alternative fixed-value option; it cannot be combined with
-`--settings`. Without either (and without OJUI0003), gamma is bypassed. A second render subpass applies
-the ramp after scene and UI blending in display-value space, preserving alpha.
-See [launch commands](../README-dev.md#live-gamma-control-from-the-python-menus)
-and [native calculation](../docs/observations/2026-10-28-gamma-bridge.md).
-
-## Interface scaling
-
-The current OJUI0003 bundle preserves the 1024x256 logo and 128x128 cursor pixels,
-and includes twelve MFT variants. Rust selects a font based on actual letterboxed
-viewport pixels. Linear UI sampling replaces nearest filtering; other scene
-filtering remains separate. The 800x600 layout and sprite display sizes are retained.
-Use the new bundle path above; old OJUI0001/2 bundles do not contain these resources.
-Their loaders remain supported. See [export commands](../README-dev.md#native-menu-prototype)
-and [evidence/limits](../docs/observations/2026-10-29-ui-scaling.md).
-
-## Camera-relative transparency
-
-The viewer re-sorts transparent scene passes each frame using the active camera.
-Opaque passes remain first; tied transparent stages preserve their order.
-This applies during Camera02 and reset without regenerating the asset bundle.
-Centroid sorting remains approximate for intersecting surfaces. See the
-[validation report](../docs/observations/2026-10-30-camera-transparency.md).
-
-### Animated scene materials, palms and rain
-
-From `engine/`, with the latest local export:
-
-```powershell
-cargo run -p jade-viewer -- --scene ../reports/palm-runtime-20261101/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --color-pipeline legacy-unorm --validation
+```shell
+cargo run -p jade-viewer -- --validation --smoke
 ```
 
-OJSCN005 adds seven animated palms using their local vertex axes.
-Seven passes carry dynamic UV rates; lampion, sky and moon offsets stay static.
-The material clock survives resize/filter rebuilds and Camera02 reset. This is
-texture animation; it does not implement dynamic scene lighting. See the
-[evidence and limitations](../docs/observations/2026-10-30-material-animation.md).
+The smoke workflow exercises a bounded sequence of rendering and resize operations.
 
-New exports also carry `menu.rain`, which adds two native rain emitters with a
-32x32 texture, three-phase lifetime and additive quads. The Rust corner/UV/color
-calculation matches 4,602 captured native corners. A private seed and fixed 60 Hz
-research scheduler make tests repeatable; synchronization with the original game
-is not established. Eight splash emitters are supported with a menu.splash sidecar. Use --no-splashes for an isolated comparison. Two bird particle emitters and two fly swarms are supported in the [fauna scene](../docs/observations/2026-11-04-menu-birds-and-flies.md). The optional [menu.flight sidecar](../docs/observations/2026-11-04-menu-mesh-flight.md) adds the three waypoint-controlled bird meshes and their wing motion. The optional [menu.pollen sidecar](../docs/observations/2026-11-04-vulkan-pollen.md) adds the drifting points of light. The [vegetation scene](../docs/observations/2026-11-04-menu-vegetation.md) animates three further plants and the hanging vine. Dynamic fog particles remain open.
+When native scene/menu packages are provided, the test can also exercise the corresponding viewer paths.
 
-```powershell
-cargo run -p jade-viewer -- --scene ../reports/menu-rain-20261103/menu.ojscene --menu ../reports/engine-ui-scale-20261029/menu.ojui --color-pipeline legacy-unorm --validation
+A successful smoke test verifies the tested runtime behavior and available Vulkan validation checks. It doesn't demonstrate original-game pixel parity.
+
+## Running the viewer
+
+Game-derived resources are not distributed with OpenJade.
+
+A fresh checkout contains no original game assets, decoded scenes, generated menu bundles or research reports.
+
+Native previews require locally prepared OpenJade packages generated from the user's own game installation.
+
+See the [native menu workflow](../README-dev.md#native-menu-workflow) for resource preparation and the required research dependencies.
+
+### Scene-only preview
+
+```shell
+cargo run -p jade-viewer -- --scene PATH_TO_SCENE --validation
 ```
 
-Use `--no-rain` to isolate its contribution. Existing scenes without the sidecar
-remain supported. See [rain integration and validation](../docs/observations/2026-11-03-vulkan-menu-rain.md).
+This loads a prepared scene package without requiring the native menu interface.
+
+### Native menu
+
+```shell
+cargo run -p jade-viewer -- --scene PATH_TO_SCENE --menu PATH_TO_MENU --color-pipeline legacy-unorm --validation
+```
+
+The native viewer renders the reconstructed 3D menu environment and its interactive interface in a single window.
+
+The example below uses a previously prepared local research snapshot:
+
+```shell
+cargo run -p jade-viewer -- --scene ../reports/menu-fog-cursor-20261108/menu.ojscene --menu ../reports/menu-fog-cursor-20261108/ui/menu.ojui --color-pipeline legacy-unorm --validation
+```
+
+This path is an example from recorded development work, not a universal latest package or a clean-checkout launch command.
+
+Newer scene exports may contain additional effects and require corresponding sidecar files.
+
+### Prince actor diagnostic
+
+The viewer also supports isolated Prince rendering and animation experiments using prepared original-resource data.
+
+```shell
+cargo run -p jade-viewer -- --scene ../reports/prince-holder-animation-20261114/prince.ojscene --color-pipeline legacy-unorm --validation
+```
+
+The local `prince.actor` sidecar must remain alongside the corresponding scene package.
+
+This diagnostic evaluates skeletal animation and skinning in Rust. It is not a playable character implementation or a general-purpose actor runtime.
+
+See [Prince skeletal animation research](../docs/observations/2026-11-14-prince-skeletal-animation.md).
+
+## Workspace architecture
+
+The Rust workspace separates resource loading, rendering abstractions, the Vulkan backend and viewer-level behavior.
+
+| Crate | Responsibility |
+| --- | --- |
+| `jade-assets` | Bounded loading and validation of local OpenJade resource packages |
+| `jade-render` | Backend-independent rendering data and diagnostic structures |
+| `jade-render-vulkan` | Vulkan device management, GPU resources, pipelines, presentation and rendering |
+| `jade-viewer` | Window/event handling, input, native menu, diagnostics and viewer state |
+
+These boundaries describe the current implementation and may evolve as the engine gains additional functionality.
+
+### Design principles
+
+- Separate resource decoding and preparation from native runtime rendering.
+- Validate package boundaries and reject malformed inputs.
+- Keep rendering infrastructure independent of game-specific behavior where practical.
+- Distinguish verified original-engine behavior from independent implementation decisions.
+- Avoid adding speculative general-purpose systems before their requirements are established.
+- Preserve compatibility with supported older diagnostic packages where practical.
+
+The long-term goal is to distinguish reusable Jade Engine functionality from game-specific implementations.
+
+## Implemented systems
+
+OpenJade distinguishes between reusable engine infrastructure and implementations developed for individual games.
+
+**A system described as reusable is not necessarily validated across multiple Jade Engine titles.** Current native development and game-resource validation primarily use *Prince of Persia: The Sands of Time*.
+
+### Core engine systems
+
+These components form the foundation of the native Rust engine and are intended to support future game integrations where technically appropriate.
+
+#### Resource loading and package validation
+
+- Bounded loading of locally prepared OpenJade scene and interface packages.
+- Validation of supported package layouts, sizes and input boundaries.
+- Support for selected historical package versions and optional runtime sidecars.
+- Separation of offline resource preparation from native runtime loading.
+
+The current viewer doesn't directly load original game archives. BF/BIG extraction, POP-LZO decoding and resource-format research are handled by the repository's separate research tools.
+
+These tools contribute to the project's Jade Engine research but are not yet integrated as general-purpose native archive loaders.
+
+#### Vulkan rendering and materials
+
+The Rust/Vulkan renderer provides:
+
+- Decoded 3D geometry and texture rendering.
+- Vertex colors, depth testing and selected material blending.
+- Native-dimension texture uploads and selected original mipmap chains.
+- Configurable texture-filtering diagnostics.
+- Camera-relative transparent-pass sorting.
+- Selected fog, blur and additive-composition paths.
+- Diagnostic sRGB and legacy UNORM color-processing modes.
+- Post-composition gamma processing.
+
+The rendering infrastructure is intended to be reusable. However, most currently reconstructed material states and visual comparisons are derived from Sands of Time.
+
+Original Jade Engine rendering behavior and compatibility with other titles remain unverified.
+
+#### Animation foundations
+
+The native engine includes selected runtime animation capabilities:
+
+- Time-dependent material UV offsets.
+- Vertex deformation for supported animated geometry.
+- Hierarchical skeletal transformations.
+- Animation-key interpolation and runtime vertex skinning.
+- Selected attachment-transform calculations.
+- Bounded particle update and rendering mechanisms.
+
+These capabilities currently serve specific menu and Prince diagnostics.
+
+They do not yet constitute a complete, game-independent animation framework or reproduce the original Jade Engine animation runtime.
+
+#### Window, input and runtime infrastructure
+
+The native viewer provides:
+
+- Window creation and Vulkan presentation through `winit`.
+- Resize handling and swapchain recreation.
+- Keyboard and mouse input for supported viewer operations.
+- Runtime state management for the current prototypes.
+- Vulkan validation and automated smoke-test entry points.
+- Local configuration persistence for the native menu.
+
+General gameplay input, gamepad handling and complete game-state management remain future work.
+
+### Game-specific implementations
+
+The following systems use resources and observed behaviors from individual games.
+
+Their implementation doesn't imply compatibility with other Jade Engine titles.
+
+#### Prince of Persia: The Sands of Time (2003)
+
+**Native menu**
+
+The experimental native menu includes:
+
+- Interactive main menu and supported option screens.
+- Local profile creation, selection and deletion.
+- Keyboard-binding label capture.
+- Gamma, texture filtering, window resolution and V-Sync settings.
+- Confirmation dialogs and persistent OpenJade configuration.
+- Resolution-aware bitmap font selection.
+- Animated cursor and glow effects.
+
+The interface is rendered directly in Rust and doesn't require a Python controller at runtime when prepared resources are available.
+
+Profiles are independent of original game saves. Unsupported audio, gameplay and gamepad-dependent controls remain disabled.
+
+**Menu scene and visual effects**
+
+The reconstructed menu environment includes selected original geometry, textures, materials and visual effects:
+
+- Animated palms, vegetation and hanging curtains.
+- Rain, splash, pollen and other particle effects.
+- Mesh birds, bird particles and fly swarms.
+- Dynamic fog emitters and scene fog panels.
+- Animated suspended fixtures.
+- Selected blur and additive postprocessing effects.
+- Camera-relative transparency handling.
+
+These systems reproduce bounded observations from the original game.
+
+Exact scene lighting, runtime synchronization, effect activation and complete visual fidelity remain unresolved.
+
+**Camera02 transition**
+
+Selecting Start New Game plays a reconstructed nine-second Camera02 animation toward the balcony.
+
+The current implementation uses 541 precomputed poses sampled at 60 Hz.
+
+The transition ends at the balcony without loading a playable level.
+
+The original scripting runtime, complete activation chain and subsequent gameplay are not implemented.
+
+**Prince actor diagnostics**
+
+The experimental actor preview supports:
+
+- Selected original-resource geometry and textures.
+- Hierarchical skeletal animation in Rust.
+- Runtime skinning of supported character geometry.
+- Selected sword and support attachment transforms.
+- Sampled pose and transformation comparisons.
+
+The current diagnostic evaluates 62 body bones and 35 transform channels from an original 37-track clip.
+
+Secondary animation controllers, complete equipment attachment behavior, dynamic actor lighting and integration into a gameplay runtime remain incomplete.
+
+This is an isolated validation environment, not a playable Prince implementation.
+
+#### Prince of Persia: Warrior Within (2004)
+
+Not implemented.
+
+Future research will need to establish relevant engine-version differences, resource layouts and game-specific runtime requirements.
+
+#### Prince of Persia: The Two Thrones (2005)
+
+Not implemented.
+
+Compatibility requirements have not been established through the current native engine validation.
+
+#### Beyond Good & Evil (2003)
+
+Not implemented.
+
+Future research may investigate its resource formats, engine behavior and opportunities for reusing existing OpenJade infrastructure.
+
+### Compatibility boundaries
+
+Current support is based primarily on the reference Sands of Time PC GOG edition.
+
+Reusable Rust components do not automatically establish binary-format compatibility, equivalent engine behavior or rendering fidelity across different Jade Engine games.
+
+Each additional title will require independent research and validation before compatibility can be claimed.
+
+For the project's compatibility objectives and roadmap, see the [main README](../README.md). For format research and validation evidence, see the [developer guide](../README-dev.md).
+
+## Resource packages and sidecars
+
+The native viewer reads locally generated OpenJade interchange packages rather than directly loading an original game installation.
+
+The package readers validate supported layouts and input boundaries.
+
+### Main packages
+
+| Package | Purpose |
+| --- | --- |
+| `.ojscene` | Scene geometry, materials, textures and selected runtime scene data |
+| `.ojui` | Prepared menu sprites, fonts, interface assets and associated UI data |
+| `.ojmenu` | Local OpenJade menu profiles and persisted settings |
+
+Selected historical package revisions remain readable for compatibility and regression testing.
+
+Not all features are available in older revisions.
+
+### Optional scene sidecars
+
+Depending on the prepared scene, additional files may carry selected native-resource data or runtime parameters.
+
+Examples include:
+
+- `menu.leaf` and `menu.trunk` for verified native texture mip data.
+- `menu.rain` and `menu.splash` for particle emitters.
+- `menu.fog` for dynamic fog emitters.
+- `menu.flight` for mesh bird animation data.
+- `menu.pollen` for luminous particles.
+- `menu.fixtures` for fixture animation.
+- `prince.actor` for the isolated Prince animation diagnostic.
+
+Other effect or deformation sidecars may also be present, depending on the export.
+
+Keep required sidecars beside their associated scene package.
+
+Package versioning, binary layout details and exact sidecar requirements are documented in the [format specifications](../docs/formats/) and dated [research observations](../docs/observations/).
+
+## Viewer command-line options
+
+The viewer provides diagnostic and comparison options for the implemented rendering systems.
+
+| Option | Purpose |
+| --- | --- |
+| `--probe` | Run the available adapter/device diagnostic |
+| `--validation` | Request available Vulkan validation checks |
+| `--smoke` | Run bounded automated viewer checks |
+| `--scene PATH` | Load a prepared OpenJade scene |
+| `--menu PATH` | Load a prepared native menu |
+| `--color-pipeline srgb` | Use the explicit sRGB comparison path |
+| `--color-pipeline legacy-unorm` | Use the stored-value color comparison path |
+| `--texture-filter nearest` | Nearest filtering for supported ordinary materials |
+| `--texture-filter linear` | Linear base-level filtering |
+| `--texture-filter trilinear` | Enable supported mipmap filtering |
+| `--gamma VALUE` | Apply a fixed diagnostic gamma value |
+| `--no-rain` | Disable native rain for comparison |
+| `--no-splashes` | Disable splash effects for comparison |
+| `--no-fog` | Disable dynamic fog emitters |
+| `--no-menu-blur` | Disable the menu blur/composite path |
+| `--no-menu-additive` | Disable the supported additive contribution |
+
+Some options require specific package versions or optional sidecars.
+
+The filtering and color-processing modes are diagnostic comparisons, not necessarily recovered original-game configuration values.
+
+### Legacy gamma bridge
+
+The separate Python menu simulation can communicate a diagnostic gamma value to older viewer configurations through an OpenJade `.ojsettings` file.
+
+This workflow is retained for historical comparison and is not required by the current native menu.
+
+Native menu bundles manage gamma directly and reject conflicting external settings control.
+
+See [gamma bridge research](../docs/observations/2026-10-28-gamma-bridge.md).
+
+## Testing and validation
+
+The project uses several complementary validation methods.
+
+| Method | Purpose |
+| --- | --- |
+| Rust unit tests | Validate package readers, data structures, calculations and supported behavior |
+| Synthetic fixtures | Exercise bounded inputs without requiring original game data |
+| Native differential comparisons | Compare selected calculations or decoded values against observed original-engine behavior |
+| Vulkan validation | Detect supported Vulkan API and resource-use errors |
+| GPU smoke tests | Exercise rendering, resizing, transitions and selected runtime paths |
+| Visual comparisons | Investigate differences between reconstructed and original-game output |
+
+These methods establish different levels of evidence.
+
+An error-free Vulkan run doesn't prove pixel accuracy, and a matching isolated calculation doesn't establish complete engine behavior.
+
+Test counts and results should always be associated with their execution date, environment and scope.
+
+Recorded validation details and reproducible research procedures are available in the [developer guide](../README-dev.md#testing-and-validation) and [dated observations](../docs/observations/).
+
+## Known limitations
+
+The native engine remains experimental.
+
+Major limitations include:
+
+- No playable Sands of Time implementation.
+- No general-purpose level loading or gameplay runtime.
+- No player input, collision or interaction systems connected to gameplay.
+- No functional native game-audio system.
+- No complete original game scripting runtime.
+- No general-purpose actor loader or completed character-controller system.
+- Incomplete secondary animation, attachment and dynamic actor-lighting support.
+- Incomplete original lighting, material, particle and postprocessing fidelity.
+- Incomplete synchronization of runtime effect activation, timing and random state.
+- Limited validation across hardware, drivers and operating systems.
+- Dependence on locally prepared resource packages for the current viewer.
+
+The implementation and its limitations will evolve as further original-engine behavior is researched and validated.
+
+## Technical references
+
+- [Developer guide](../README-dev.md) — setup, research workflows, testing and milestones.
+- [Format documentation](../docs/formats/) — native resource findings and OpenJade interchange formats.
+- [Research observations](../docs/observations/) — dated experiments, evidence and validation.
+- [Architecture decisions](../docs/decisions/) — recorded implementation choices.
+- [External research references](../references/) — documented prior work and provenance.
+- [Project overview](../README.md) — objectives, compatibility roadmap and legal disclaimer.
+
+Original game files remain outside version control and must be supplied from a legally obtained installation.
+
+OpenJade doesn't distribute proprietary game assets or original engine source code.

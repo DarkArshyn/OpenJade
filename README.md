@@ -16,7 +16,9 @@ However, OpenJade is not intended to remain limited to a single game. Its long-t
 
 The project emphasizes documented reverse engineering, independently implemented systems, and the preservation of classic games through modern, open-source technology.
 
-Native Windows, Linux and macOS support is a long-term objective. Game resources must come from the user's own local installation and are not distributed here.
+Windows remains the primary development platform. Initial native Rust/Vulkan validation has also been completed on Linux and macOS, although broader cross-platform support remains experimental.
+
+Game resources must come from the user's own local installation and are not distributed here.
 
 > [!NOTE]
 > Generative AI assists with research and implementation under human supervision.
@@ -37,7 +39,7 @@ Each game may require additional research into engine versions, proprietary reso
 
 ## Current status
 
-**An early native menu prototype runs on Windows. The game is not playable.**
+**An experimental native Rust/Vulkan menu prototype has been validated on Windows, Linux and macOS. The game is not playable.**
 
 The current implementation focuses on reconstructing the main menu and its surrounding 3D environment from Prince of Persia: The Sands of Time.
 
@@ -86,21 +88,33 @@ Text and widgets are composed in Rust using locally prepared MFT/DDS resources. 
 Captures and generated asset bundles remain local and are not included in the
 repository.
 
-See the [native prototype workflow](README-dev.md#native-menu-prototype) and the [separate Python simulation](README-dev.md#menu-simulation).
+See the [native prototype workflow](README-dev.md#native-menu-workflow) and the [separate Python simulation](README-dev.md#optional-python-menu-simulation).
 
 ## Implemented capabilities
+
+### Jade Engine research and foundations
 
 | Area | Available today | Main limit |
 | --- | --- | --- |
 | Archives | Tested BF/BIG extraction and recognized POP-LZO decoding | Not a universal archive decoder |
 | Resources | MGM structure/materials, menu links, DDS and MFT previews | Selected layouts; font styling remains experimental |
-| Python menu simulation | Retained as a research/reference tool | No gameplay; optional legacy gamma bridge |
-| Native menu | Detailed screens over 3D scenery, four confirmed display controls, local profiles/settings and confirmations | Unsupported systems disabled; bindings stored but no gameplay |
-| Camera02 | Nine-second transition sampled from decoded tracks and played by the native viewer | Baked 60 Hz poses; no original scripting runtime or gameplay trigger chain |
-| Scene materials | Textures, depth, fog, scene blur, partial masked glow and multi-pass fixture blending | Original lighting, remaining particle effects and exact filtering remain unresolved |
-| Menu rain | Two animated emitters with native textures and three life phases | Random sequence and scene-wide timing are not synchronized with the original |
-| Prince preview | Original-resource body animation with sword and articulated support in an isolated Rust/Vulkan view; separate frozen reference with weapons | Partial: secondary motion, dagger in the animated preview, animated lighting, menu integration and gameplay remain unfinished |
-| Validation | Synthetic tests, Vulkan validation and local visual checks | Windows/AMD tested; no Linux/macOS validation |
+
+### Prince of Persia: The Sands of Time
+
+| Area | Available today | Main limit |
+| --- | --- | --- |
+| Python menu simulation | Retained as a research/reference tool | No gameplay and optional legacy gamma bridge |
+| Native menu | Interactive 3D menu with navigation, profiles, display settings and local persistence | No playable game, original save loading or functional audio
+| Scene rendering | Reconstructed 3D environment with textures, materials, fog, transparency and selected postprocessing effects | Original lighting and overall visual fidelity remain incomplete
+| Animation and effects | Animated vegetation, curtains, birds, rain, particles, flames and other menu effects | Timing, activation and some visual behaviors remain under investigation
+| Camera02 | Reconstructed nine-second camera transition triggered by Start New Game | No gameplay, cutscene or level loading follows |
+| Prince preview | Experimental character rendering with original-resource geometry, skeletal animation and sword attachment | Isolated diagnostic: secondary animation, dynamic lighting and gameplay remain incomplete
+
+### Testing and platform validation
+
+| Area | Available today | Main limit |
+| --- | --- | --- |
+| Validation | Synthetic tests, Vulkan validation and local visual checks | Windows/AMD primary. Initial Linux/AMD RADV and macOS/Apple Silicon KosmicKrisp validation successful (Rust engine only) |
 
 ## Development approach
 
@@ -142,29 +156,55 @@ Development is organized around progressive milestones rather than fixed release
 
 Future compatibility priorities may evolve based on research findings, technical feasibility and available contributions.
 
-### Cross-platform support
+## Cross-platform support
 
-Development and testing are currently limited to Windows.
+Development remains primarily focused on Windows.
 
-Linux and macOS are not supported or validated at this stage. Native support for these platforms remains a long-term objective, to be investigated as the engine matures.
+Initial native cross-platform validation was successfully performed on **2026-11-14**, covering the Rust engine on Linux and macOS.
+
+### Linux (x86_64)
+
+Testing was performed on Manjaro Linux with an AMD Radeon RX 9070 XT using Mesa RADV.
+
+The Rust workspace built successfully, and Vulkan rendering was verified with both the menu and actor scenes. All 67 executed unit tests passed, with no Vulkan validation errors reported.
+
+### macOS - Apple Silicon (ARM64)
+
+Testing was performed on macOS 27.2.1 with an Apple M3 Pro, using the [KosmicKrisp](https://docs.mesa3d.org/drivers/kosmickrisp.html) Vulkan driver (Vulkan SDK 1.4.363.1).
+
+The Rust workspace built successfully without macOS-specific source modifications. All 67 executed unit tests passed, and Vulkan rendering was verified with TSoT menu and a separate Prince scene.
+
+Three runtime tests were completed successfully, with no Vulkan validation errors reported.
+
+### Scope and limitations
+
+Testing on Linux and macOS was limited to the Rust engine.
+
+The project's PowerShell tooling currently targets **PowerShell 5.1**, which is Windows-only. Although **PowerShell 7** is available on Linux and macOS, compatibility with these platforms has not been tested or validated. The project's Python tools were also not tested or executed on either platform.
+
+These results apply strictly to the engine's implementation and features available at the time of testing. They do not guarantee compatibility with future development or changes to the engine.
+
+Linux and macOS support remain experimental. Validation has been limited to the specific operating systems, hardware, and Vulkan drivers described above. Broader cross-platform support remains a long-term objective as the engine matures.
 
 There is no completion date or reliable overall completion percentage.
 See [milestones and validation criteria](README-dev.md#roadmap-and-milestones).
 
 ## Getting started
 
-Development currently uses Windows. The native viewer requires the Rust/Vulkan build environment and locally generated scene/menu bundles; research tools use PowerShell and Python.
+Development remains primarily focused on Windows. The native Rust/Vulkan engine has also undergone initial validation on Linux and macOS, as described above.
+
+The native viewer requires platform-specific Rust/Vulkan dependencies and locally prepared scene/menu bundles. Research workflows currently use the documented Windows PowerShell 5.1 and Python environment.
 
 Ghidra supports optional static analysis and is not required to launch a prepared preview.
 
-Start with the [developer setup guide](README-dev.md#getting-started), then choose the [native menu prototype](README-dev.md#native-menu-prototype) or the [Python menu simulation](README-dev.md#menu-simulation).
+Start with the [developer setup guide](README-dev.md#first-time-setup), then choose the [native menu workflow](README-dev.md#native-menu-workflow) or the [optional Python menu simulation](README-dev.md#optional-python-menu-simulation).
 
 A fresh checkout contains neither original game resources nor generated bundles.
 
 ## Documentation
 
 - [Developer guide](README-dev.md): setup, commands, tests, milestones and architecture.
-- [Engine guide](engine/README.md): native viewer build and launch.
+- [Engine guide](engine/README.md): native engine architecture, platform prerequisites, building, testing and viewer usage.
 - [Format notes](docs/formats): observed layouts and local interchange formats.
 - [Research observations](docs/observations): dated evidence and experiments.
 - [Project decisions](docs/decisions) and [external research provenance](references).
