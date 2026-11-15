@@ -36,5 +36,7 @@ scene. The viewer evaluates its skeleton and lighting locally, transforms positi
 through this matrix, and updates only that vertex range. Without this sidecar,
 legacy actor packages continue to require complete scene vertex coverage.
 
-The original checkpoint supplies the current balcony placement; observed native
-height differs slightly and no collision correction is encoded here.
+The current balcony export retains checkpoint XY/orientation and derives initial Z
+from the original collision geometry. This result is encoded in the existing matrix;
+the sidecar does not contain a collision mesh or implement continuous grounding.
+See [integration validation](../observations/2026-11-15-prince-grounded-integration.md).

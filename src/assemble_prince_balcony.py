@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 from prince_resources import Resources
 from prince_animation import node
+from prince_ground import grounded_placement
 
 def read_scene(path):
     raw=path.read_bytes();original=raw;magic=raw[:8];palms=b''
@@ -26,6 +27,7 @@ def assemble(menu,actor,source,output):
     if output.exists():raise FileExistsError(output)
     scene=read_scene(menu);prince=read_scene(actor);r=Resources([source]);placement,parent,name=node(r,0x0F0053D9)
     if parent is not None or name!='Menu3D_TEC_Checkpoint.gao':raise ValueError('Unexpected checkpoint')
+    placement,grounding=grounded_placement(r)
     w=max(scene['w'],prince['w']);h=max(scene['h'],prince['h']);layers=scene['nl']+prince['nl']
     if layers>128 or w*h*layers*4>240*1024*1024:raise ValueError('Texture transport limit')
     pixels=np.zeros((layers,h,w,4),np.uint8)
@@ -45,9 +47,9 @@ def assemble(menu,actor,source,output):
         shutil.copyfile(actor.with_suffix(suffix),output/('menu'+suffix))
     (output/'menu.placement').write_bytes(b'OJAPL001'+struct.pack('<I16f',scene['nv'],*placement.ravel()))
     report=dict(menu=str(menu.resolve()),actor=str(actor.resolve()),menu_sha256=hashlib.sha256(scene['raw']).hexdigest(),actor_sha256=hashlib.sha256(prince['raw']).hexdigest(),
-                scene_sha256=hashlib.sha256(raw).hexdigest(),checkpoint='0F0053D9',placement=placement.tolist(),source=r.sources,records=r.used,
+                scene_sha256=hashlib.sha256(raw).hexdigest(),checkpoint='0F0053D9',placement=placement.tolist(),grounding=grounding,source=r.sources,records=r.used,
                 actor_vertex_range=[scene['nv'],scene['nv']+prince['nv']],
-                limitations=['Source checkpoint height retained: native measured actor is approximately 0.01435 lower; ground placement is not implemented.',
+                limitations=['Initial menu placement uses the unique source collision intersection; continuous actor collision and movement are not implemented.',
                              'Animation repeats as an isolated diagnostic; no gameplay or native actor activation.',
                              'Animated normals use captured fixed light parameters, not a general scene-light system.'])
     (output/'actor-integration.json').write_text(json.dumps(report,indent=2),encoding='utf-8');return report

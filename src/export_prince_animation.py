@@ -1,6 +1,6 @@
 """Export source-evaluated Prince body animation for the Vulkan diagnostic viewer.
 
-Draw states and frozen lighting still come from the previous diagnostic capture.
+Draw states and fixed light parameters still come from the previous diagnostic capture.
 No captured matrices are used for vertex positions. The dagger uses a source-backed constrained diagnostic controller; native startup remains unverified.
 """
 import argparse
@@ -117,7 +117,7 @@ def export(sources,capture,output):
         'Body positions use original skeleton, inverse binds, packed weights and animation keys; no captured pose matrices.',
         'Untracked secondary joints use source-local transforms; procedural clothing fidelity is not validated.',
         'Neutral face follows the head bone; facial expression/eye controllers are not implemented.',
-        'Dagger uses measured local orientation and source sheath constraints. Fixed 125 Hz diagnostic stepping resets from rest with each clip; native startup and wind activation are not reproduced.',
+        'Dagger uses measured local orientation and source sheath constraints. Fixed 125 Hz diagnostic stepping retains state across body loops; native startup and wind activation are not reproduced.',
         'Holder internal joints use the source sheathed clip 3F000E32; other holder actions are not selected.',
         'Sword uses its source snap transform and Spine2; reflection and material slot remapping remain unimplemented.',
         'Lighting colors and draw states remain from the frozen diagnostic capture; animated normal lighting is not implemented.',

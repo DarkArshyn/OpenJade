@@ -61,14 +61,14 @@ def matrix(point,rest,parent):
 
 
 def world(skeleton,config,seconds):
-    """Fixed 125 Hz diagnostic replay; rest initialization resets with the body clip."""
-    time=max(0.,seconds)%4.;bone=skeleton.index[0x130035EE];parent=skeleton.parents[bone]
+    """Fixed 125 Hz diagnostic replay; controller history survives body clip loops."""
+    time=max(0.,seconds);bone=skeleton.index[0x130035EE];parent=skeleton.parents[bone]
     p=config['initial'].copy();v=np.zeros(3);previous=skeleton.world(0)[parent][3,:3]
     count=int(time*125)
     for step in range(1,count+1):
-        pose=skeleton.world(step/125*5)[parent]
+        pose=skeleton.world((step/125*5)%20)[parent]
         p,v=advance(config,p,v,previous,pose,1/125);previous=pose[3,:3]
-    poses=skeleton.world(time*5)
+    poses=skeleton.world((time*5)%20)
     if time-count/125>1e-7:p,v=advance(config,p,v,previous,poses[parent],time-count/125)
     poses[bone]=matrix(p,skeleton.nodes[bone][0],poses[parent])
     changed={bone}

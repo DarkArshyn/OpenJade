@@ -218,19 +218,18 @@ cargo run -p jade-viewer -- --scene ../reports/prince-sheath-animation-20261114/
 
 Keep the `.actor`, `.sheath` and `.actorlight` sidecars beside the isolated scene.
 
-The fixed diagnostic sheath cycle is prepared once at load time to avoid replaying its entire history every frame. Development builds optimize animation math, and CPU simulation overlaps the previous GPU submission. Bounded profiling distinguishes GPU command execution from CPU presentation waits. See the [CPU performance measurements and limits](docs/observations/2026-11-15-prince-performance.md).
+The first diagnostic sheath cycle is prepared at load time; subsequent steps preserve controller state across body loops. Development builds optimize animation math, and CPU simulation overlaps the previous GPU submission. Bounded profiling distinguishes GPU command execution from CPU presentation waits. See the [CPU performance measurements and limits](docs/observations/2026-11-15-prince-performance.md).
 
 The prepared balcony integration additionally uses `.placement` and preserves the menu's effect sidecars:
 
 ```powershell
-cargo run -p jade-viewer -- --scene ../reports/menu-prince-20261115/menu.ojscene --menu ../reports/menu-fixtures-20261110/ui/menu.ojui --color-pipeline legacy-unorm --validation
+cargo run -p jade-viewer -- --scene ../reports/menu-prince-grounded-20261115/menu.ojscene --menu ../reports/menu-fixtures-20261110/ui/menu.ojui --color-pipeline legacy-unorm --validation
 ```
 
-This example requires existing local exports. The original checkpoint height is retained;
-its small measured difference from native ground placement is unresolved. See the
-[sheath, lighting and balcony validation](docs/observations/2026-11-15-prince-sheath-balcony.md)
-for preparation, tests and the distinction between measured calculations and diagnostic timing.
+This example requires existing local exports. Initial Z now comes from the original balcony collision triangle; checkpoint XY and orientation are preserved. The engine applies this placement to animated vertices through `.placement`. See [grounded menu integration](docs/observations/2026-11-15-prince-grounded-integration.md) for source/native comparisons, tests and frame timings. Continuous collision and player movement are not implemented.
 This Windows update has not been revalidated on Linux/macOS.
+
+[Balcony pose and loop validation](docs/observations/2026-11-15-prince-balcony-validation.md) adds five repeatable endpoint-camera captures and a live frame-time baseline. The measured four-second sheath reset discontinuity is corrected by [preserving controller state across native-observed body loops](docs/observations/2026-11-15-prince-sheath-loop.md). Initial collision-based placement is validated; dynamic collision, native startup and general action selection remain unimplemented or unvalidated. See the [ground-placement measurements](docs/observations/2026-11-15-prince-ground-placement.md): the native origin is stable; the subsequent [native contact capture](docs/observations/2026-11-15-prince-native-ground.md) identifies the supporting collision triangle.
 
 Research lineage and reproducible fixture requirements:
 

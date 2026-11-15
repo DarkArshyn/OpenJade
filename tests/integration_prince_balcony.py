@@ -1,13 +1,18 @@
-"""Verify scene assembly preserves scenery and uses the original checkpoint."""
+"""Verify scene assembly preserves scenery and uses source collision grounding."""
 import argparse,hashlib,json,struct
 from pathlib import Path
 import numpy as np
 from assemble_prince_balcony import read_scene
 from prince_resources import Resources
-from prince_animation import node
+from prince_ground import grounded_placement
 
 def verify(menu,actor,merged,source,capture):
-    old=read_scene(menu);new=read_scene(merged);prince=read_scene(actor);placement=node(Resources([source]),0x0F0053D9)[0]
+    old=read_scene(menu);new=read_scene(merged);prince=read_scene(actor);placement,grounding=grounded_placement(Resources([source]))
+    encoded=merged.with_suffix('.placement').read_bytes()
+    assert encoded[:8]==b'OJAPL001' and len(encoded)==76
+    assert struct.unpack_from('<I',encoded,8)[0]==old['nv']
+    actual=np.frombuffer(encoded,'<f4',16,12).reshape(4,4)
+    assert np.array_equal(actual,placement.astype('<f4'))
     assert new['nv']==old['nv']+prince['nv']
     assert np.array_equal(new['vertices'][:old['nv']],old['vertices'])
     assert new['draws'][:old['nd']]==old['draws'] and new['palms']==old['palms']
@@ -29,7 +34,8 @@ def verify(menu,actor,merged,source,capture):
         assert abs(matrix[3,:2]-placement[3,:2]).max()<1e-6
         samples.append(float(matrix[3,2]-placement[3,2]))
     assert len(samples)>=10
-    return dict(scenery_preserved=True,source_checkpoint_vertex_error=error,native_placement_samples=len(samples),native_z_difference_range=[min(samples),max(samples)],scene_sha256=hashlib.sha256(new['raw']).hexdigest(),scope='Checkpoint XY and orientation validated; original height retained, no ground correction invented.')
+    assert max(abs(x) for x in samples)<1e-6
+    return dict(scenery_preserved=True,source_grounded_vertex_error=error,collision=grounding,native_placement_samples=len(samples),native_z_difference_range=[min(samples),max(samples)],scene_sha256=hashlib.sha256(new['raw']).hexdigest(),scope='Checkpoint XY/orientation and source collision height validated against native placements; no continuous collision solver.')
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
