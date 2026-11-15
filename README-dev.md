@@ -217,6 +217,9 @@ cargo run -p jade-viewer -- --scene ../reports/prince-sheath-animation-20261114/
 ```
 
 Keep the `.actor`, `.sheath` and `.actorlight` sidecars beside the isolated scene.
+
+The fixed diagnostic sheath cycle is prepared once at load time to avoid replaying its entire history every frame. Development builds optimize animation math, and CPU simulation overlaps the previous GPU submission. Bounded profiling distinguishes GPU command execution from CPU presentation waits. See the [CPU performance measurements and limits](docs/observations/2026-11-15-prince-performance.md).
+
 The prepared balcony integration additionally uses `.placement` and preserves the menu's effect sidecars:
 
 ```powershell

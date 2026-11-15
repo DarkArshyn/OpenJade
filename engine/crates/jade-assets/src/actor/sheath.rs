@@ -39,6 +39,7 @@ pub(super) struct Sheath {
     initial: V,
     planes: [[V; 4]; 2],
 }
+#[derive(Clone)]
 pub(super) struct State {
     point: V,
     velocity: V,

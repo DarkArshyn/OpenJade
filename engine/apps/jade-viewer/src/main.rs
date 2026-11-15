@@ -418,6 +418,10 @@ impl ApplicationHandler for App {
                         return;
                     }
                 }
+                if p.profile_complete() {
+                    event_loop.exit();
+                    return;
+                }
                 if self.smoke {
                     if self.frames == 20 {
                         let _ = p.window.request_inner_size(PhysicalSize::new(

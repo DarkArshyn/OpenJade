@@ -22,6 +22,7 @@ struct Influence {
 pub struct Actor {
     placement: Option<(usize, Matrix)>,
     sheath: Option<sheath::Sheath>,
+    sheath_states: Vec<sheath::State>,
     lighting: Option<lighting::Lighting>,
     bones: Vec<Bone>,
     order: Vec<usize>,
@@ -247,6 +248,7 @@ impl Actor {
         Ok(Self {
             placement: None,
             sheath: None,
+            sheath_states: Vec::new(),
             lighting: None,
             bones,
             order,
@@ -261,6 +263,20 @@ impl Actor {
         if self.bones[control.bone].parent < 0 || self.duration / self.rate > 10. {
             return Err(invalid("Sheath requires parent"));
         }
+        // This fixed diagnostic clip has immutable inputs and resets every cycle.
+        // Cache only complete steps; the fractional step remains local to each query.
+        // At most 1251 states (45,036 bytes) for the bounded ten-second clip.
+        let parent = self.bones[control.bone].parent as usize;
+        let mut state = control.initial(self.base_world(0.)[parent]);
+        let steps = (f64::from(self.duration / self.rate) * 125.).floor() as usize;
+        let mut states = Vec::with_capacity(steps + 1);
+        states.push(state.clone());
+        for step in 1..=steps {
+            let pose = self.base_world(step as f64 / 125.);
+            control.step(&mut state, pose[parent], 1. / 125.);
+            states.push(state.clone());
+        }
+        self.sheath_states = states;
         self.sheath = Some(control);
         Ok(())
     }
@@ -295,6 +311,37 @@ impl Actor {
         world
     }
     fn evaluated_world(&self, seconds: f64) -> Vec<Matrix> {
+        let mut world = self.base_world(seconds);
+        if let Some(c) = &self.sheath {
+            // Diagnostic replay resets at clip boundaries. Native startup/action selection is separate.
+            let period = f64::from(self.duration / self.rate);
+            let time = if seconds.is_finite() && seconds >= 0. {
+                seconds.rem_euclid(period)
+            } else {
+                0.
+            };
+            let parent = self.bones[c.bone].parent as usize;
+            let steps = (time * 125.).floor() as usize;
+            let mut state = self.sheath_states[steps].clone();
+            let remaining = (time - steps as f64 / 125.) as f32;
+            if remaining > 1e-7 {
+                c.step(&mut state, world[parent], remaining);
+            }
+            world[c.bone] = c.matrix(&state, self.bones[c.bone].local, world[parent]);
+            let mut changed = vec![false; self.bones.len()];
+            changed[c.bone] = true;
+            for &i in &self.order {
+                let p = self.bones[i].parent;
+                if i != c.bone && p >= 0 && changed[p as usize] {
+                    world[i] = multiply(self.bones[i].local, world[p as usize]);
+                    changed[i] = true;
+                }
+            }
+        }
+        world
+    }
+    #[cfg(test)]
+    fn replayed_world(&self, seconds: f64) -> Vec<Matrix> {
         let mut world = self.base_world(seconds);
         if let Some(c) = &self.sheath {
             // Diagnostic replay resets at clip boundaries. Native startup/action selection is separate.
@@ -440,6 +487,66 @@ mod tests {
         data[12..16].copy_from_slice(&2f32.to_le_bytes());
         assert!(actor.load_placement(&data, 5).is_err());
     }
+    fn check_replay(actor: &Actor) {
+        // Out-of-order seeks, loop boundaries and fractional steps must stay identical.
+        for time in [
+            3.99999,
+            0.001,
+            2.,
+            4.,
+            8.003,
+            0.008,
+            0.007999,
+            0.,
+            -1.,
+            f64::NAN,
+            f64::INFINITY,
+        ]
+        .into_iter()
+        .chain((0..53).rev().map(|i| i as f64 * 0.07913))
+        {
+            assert_eq!(
+                actor.evaluated_world(time),
+                actor.replayed_world(time),
+                "time={time}"
+            );
+        }
+    }
+    #[test]
+    fn cached_sheath_preserves_replay_and_reload() {
+        let mut actor = Actor::decode(&fixture(), 1).unwrap();
+        let mut data = b"OJSHT001".to_vec();
+        data.extend(0u32.to_le_bytes());
+        for value in [1f32, 0.5, 0.5, 0., 0., -10., 1., 0., 0.] {
+            data.extend(value.to_le_bytes());
+        }
+        for _ in 0..8 {
+            for value in [1f32, 0., 0.] {
+                data.extend(value.to_le_bytes());
+            }
+        }
+        actor.load_sheath(&data).unwrap();
+        check_replay(&actor);
+        let before = actor.positions(0.57);
+        assert!(actor.load_sheath(&data[..100]).is_err());
+        assert_eq!(before, actor.positions(0.57));
+        data[32..36].copy_from_slice(&(-5f32).to_le_bytes());
+        actor.load_sheath(&data).unwrap();
+        check_replay(&actor);
+        assert_ne!(before, actor.positions(0.57));
+    }
+    #[test]
+    #[ignore = "Requires the private actor sheath fixture"]
+    fn source_cached_sheath_matches_replay() {
+        let path = std::path::PathBuf::from(std::env::var("OPENJADE_ACTOR_FIXTURE").unwrap());
+        let data = std::fs::read(&path).unwrap();
+        let count = u32::from_le_bytes(data[16..20].try_into().unwrap()) as usize;
+        let mut actor = Actor::decode(&data, count).unwrap();
+        actor
+            .load_sheath(&std::fs::read(path.with_extension("sheath")).unwrap())
+            .unwrap();
+        check_replay(&actor);
+    }
     fn lighting_fixture(active: u32) -> Vec<u8> {
         let mut data = b"OJALIT01".to_vec();
         data.extend(1u32.to_le_bytes());
@@ -528,7 +635,7 @@ mod tests {
             for row in 0..4 {
                 for col in 0..4 {
                     let value: f32 = if row == 3 && col < 3 {
-                        xyz[col]
+                        *xyz.get(col).unwrap()
                     } else if row == col {
                         1.
                     } else {

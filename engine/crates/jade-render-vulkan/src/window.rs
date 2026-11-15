@@ -1,4 +1,6 @@
 //! Single-frame Vulkan presentation with an original diagnostic textured panel.
+#[path = "frame_timing.rs"]
+mod frame_timing;
 #[path = "panel.rs"]
 mod panel;
 use ash::{vk, Entry};
@@ -68,6 +70,11 @@ pub struct Presenter {
     native_ui: Vec<f32>,
     native_opacities: Vec<f32>,
     vsync: bool,
+    timing: frame_timing::Timing,
+    queries: vk::QueryPool,
+    query_pending: bool,
+    timestamp_period: f32,
+    timestamp_bits: u32,
 }
 
 impl Presenter {
@@ -76,6 +83,7 @@ impl Presenter {
         validation: bool,
         scene: Option<Scene>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        let timing = frame_timing::Timing::new()?;
         let fixed_seconds = std::env::var("OPENJADE_CAPTURE_SECONDS")
             .ok()
             .map(|s| s.parse::<f32>())
@@ -142,6 +150,11 @@ impl Presenter {
                 native_ui: Vec::new(),
                 native_opacities: Vec::new(),
                 vsync: true,
+                timing,
+                queries: vk::QueryPool::null(),
+                query_pending: false,
+                timestamp_period: 0.,
+                timestamp_bits: 0,
             };
             if validation {
                 this.messenger = this.debug_loader.create_debug_utils_messenger(
@@ -229,12 +242,35 @@ impl Presenter {
                 None,
             )?;
             let p = this.instance.get_physical_device_properties(gpu);
+            if this.timing.enabled() {
+                this.timestamp_bits = this
+                    .instance
+                    .get_physical_device_queue_family_properties(gpu)[family as usize]
+                    .timestamp_valid_bits;
+                this.timestamp_period = p.limits.timestamp_period;
+                if this.timestamp_bits > 0 {
+                    this.queries = d.create_query_pool(
+                        &vk::QueryPoolCreateInfo::default()
+                            .query_type(vk::QueryType::TIMESTAMP)
+                            .query_count(2),
+                        None,
+                    )?;
+                }
+            }
             println!(
                 "Present adapter: {}",
                 CStr::from_ptr(p.device_name.as_ptr()).to_string_lossy()
             );
+            if let Some(vsync) = this.timing.vsync {
+                if !this.set_vsync(vsync)? {
+                    return Err("Requested profile present mode unavailable".into());
+                }
+            }
             Ok(this)
         }
+    }
+    pub fn profile_complete(&self) -> bool {
+        self.timing.complete()
     }
     pub fn native_ui(&mut self, vertices: &[f32], opacities: &[f32]) {
         self.native_opacities.clear();
@@ -251,6 +287,7 @@ impl Presenter {
         }
     }
     pub fn set_vsync(&mut self, enabled: bool) -> Result<bool, vk::Result> {
+        let enabled = self.timing.vsync.unwrap_or(enabled);
         if !enabled {
             let modes = unsafe {
                 self.surface_loader
@@ -370,6 +407,14 @@ impl Presenter {
                 .push(d.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?);
         }
         println!(
+            "Present mode: {:?}",
+            if self.vsync {
+                vk::PresentModeKHR::FIFO
+            } else {
+                vk::PresentModeKHR::IMMEDIATE
+            }
+        );
+        println!(
             "Swapchain {}x{}; {} images",
             extent.width,
             extent.height,
@@ -397,27 +442,13 @@ impl Presenter {
         // SAFETY: one frame in flight. Fence protects command reuse; acquire waits
         // at COLOR_ATTACHMENT_OUTPUT. Render-finished semaphores are allocated per swapchain image.
         unsafe {
+            let started = std::time::Instant::now();
+            let rebuilt = self.dirty;
             if self.dirty {
                 self.recreate()?;
             }
-            let d = self.device.as_ref().unwrap();
-            let loader = self.swap_loader.as_ref().unwrap();
-            d.wait_for_fences(&[self.fence], true, u64::MAX)?;
-            let (index, suboptimal) = match loader.acquire_next_image(
-                self.swap,
-                u64::MAX,
-                self.acquired,
-                vk::Fence::null(),
-            ) {
-                Ok(v) => v,
-                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                    self.dirty = true;
-                    return Ok(false);
-                }
-                Err(e) => return Err(e),
-            };
-            d.reset_command_buffer(self.command, vk::CommandBufferResetFlags::empty())?;
-            d.begin_command_buffer(self.command, &vk::CommandBufferBeginInfo::default())?;
+            // These owned CPU results do not access mapped GPU resources. Evaluate them
+            // while the previous submission/presentation may still be in flight.
             let now = std::time::Instant::now();
             let actor_positions = self
                 .scene
@@ -489,6 +520,51 @@ impl Presenter {
             if let (Some(dt), Some(flight)) = (step, flight.as_deref_mut()) {
                 flight.advance(dt);
             }
+            let simulated_at = std::time::Instant::now();
+            let d = self.device.as_ref().unwrap();
+            let loader = self.swap_loader.as_ref().unwrap();
+            d.wait_for_fences(&[self.fence], true, u64::MAX)?;
+            let fence_done = std::time::Instant::now();
+            if self.query_pending {
+                let mut ticks = [0u64; 2];
+                d.get_query_pool_results(
+                    self.queries,
+                    0,
+                    &mut ticks,
+                    vk::QueryResultFlags::TYPE_64,
+                )?;
+                self.timing.gpu(frame_timing::gpu_ms(
+                    ticks,
+                    self.timestamp_bits,
+                    self.timestamp_period,
+                ));
+                self.query_pending = false;
+            }
+            let (index, suboptimal) = match loader.acquire_next_image(
+                self.swap,
+                u64::MAX,
+                self.acquired,
+                vk::Fence::null(),
+            ) {
+                Ok(v) => v,
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                    self.dirty = true;
+                    return Ok(false);
+                }
+                Err(e) => return Err(e),
+            };
+            let acquired_at = std::time::Instant::now();
+            d.reset_command_buffer(self.command, vk::CommandBufferResetFlags::empty())?;
+            d.begin_command_buffer(self.command, &vk::CommandBufferBeginInfo::default())?;
+            if self.queries != vk::QueryPool::null() {
+                d.cmd_reset_query_pool(self.command, self.queries, 0, 2);
+                d.cmd_write_timestamp(
+                    self.command,
+                    vk::PipelineStageFlags::TOP_OF_PIPE,
+                    self.queries,
+                    0,
+                );
+            }
             self.panel.as_ref().unwrap().draw(
                 self.command,
                 index as usize,
@@ -513,9 +589,23 @@ impl Presenter {
                     flight: flight.as_deref(),
                 },
             )?;
+            if self.queries != vk::QueryPool::null() {
+                d.cmd_write_timestamp(
+                    self.command,
+                    vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                    self.queries,
+                    1,
+                );
+            }
             d.end_command_buffer(self.command)?;
+            let recorded_at = std::time::Instant::now();
             let wait = [self.acquired];
-            let stage = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+            // Profiling waits before its first timestamp so acquire latency is not GPU work.
+            let stage = [if self.timing.enabled() {
+                vk::PipelineStageFlags::TOP_OF_PIPE
+            } else {
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+            }];
             let cmd = [self.command];
             let signal = [self.done[index as usize]];
             d.reset_fences(&[self.fence])?;
@@ -528,6 +618,8 @@ impl Presenter {
                     .signal_semaphores(&signal)],
                 self.fence,
             )?;
+            self.query_pending = self.queries != vk::QueryPool::null();
+            let submitted_at = std::time::Instant::now();
             let swaps = [self.swap];
             let indices = [index];
             match loader.queue_present(
@@ -541,6 +633,18 @@ impl Presenter {
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.dirty = true,
                 Err(e) => return Err(e),
             }
+            self.timing.frame(
+                [
+                    started,
+                    simulated_at,
+                    fence_done,
+                    acquired_at,
+                    recorded_at,
+                    submitted_at,
+                    std::time::Instant::now(),
+                ],
+                rebuilt,
+            );
             Ok(true)
         }
     }
@@ -551,6 +655,10 @@ impl Drop for Presenter {
         unsafe {
             if let Some(d) = &self.device {
                 let _ = d.device_wait_idle();
+                self.timing.report();
+                if self.queries != vk::QueryPool::null() {
+                    d.destroy_query_pool(self.queries, None);
+                }
                 self.panel.take();
                 for s in self.done.drain(..) {
                     d.destroy_semaphore(s, None);

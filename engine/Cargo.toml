@@ -17,3 +17,8 @@ winit = "=0.30.12"
 raw-window-handle = "=0.6.2"
 
 jade-assets = { path = "crates/jade-assets" }
+
+# Animation, skinning and particle math must stay usable in interactive dev builds.
+# Keep debug symbols, assertions and overflow checks; renderer/app remain unoptimized.
+[profile.dev.package.jade-assets]
+opt-level = 2

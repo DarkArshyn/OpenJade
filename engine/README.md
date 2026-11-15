@@ -265,6 +265,11 @@ cargo run -p jade-viewer -- --scene ../reports/prince-sheath-animation-20261114/
 
 Keep `prince.actor`, `prince.sheath` and `prince.actorlight` beside the corresponding scene package. Prepared balcony scenes additionally use an actor `.placement` sidecar.
 
+The sheath diagnostic caches complete simulation steps at load time; arbitrary-time queries preserve the previous poses. To measure actor CPU cost independently of Vulkan, run `cargo run -p jade-assets --example actor_timing -- PATH_TO_PRINCE.actor`. See [performance evidence and scope](../docs/observations/2026-11-15-prince-performance.md).
+
+Development builds optimize `jade-assets` animation math while retaining debug checks. Optional bounded GPU/CPU profiling uses `OPENJADE_PROFILE_FRAMES=600`; `OPENJADE_PROFILE_PRESENT=fifo` or `immediate` enables an explicit comparison without changing saved settings. The viewer prints timings and exits. Unset these variables for ordinary use. GPU timestamps measure command execution, not physical display latency. See the performance evidence above for commands and limitations.
+
+
 This diagnostic evaluates skeletal animation and skinning in Rust. It is not a playable character implementation or a general-purpose actor runtime.
 
 See [Prince skeletal animation research](../docs/observations/2026-11-14-prince-skeletal-animation.md) and [sheath, lighting and balcony integration](../docs/observations/2026-11-15-prince-sheath-balcony.md). The [developer actor workflow](../README-dev.md#actor-diagnostics) includes the prepared menu launch command.
