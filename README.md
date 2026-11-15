@@ -64,7 +64,7 @@ animate in real time. The two suspended flames also deform using their decoded v
 - Lighting, transparency ordering and visual fidelity remain under investigation; this is not a faithful recreation yet.
 - The sky and moon are now included; some small effects remain absent.
 - Named scene lights are not yet reproduced as runtime lights; recorded vertex colors provide
-part of the current appearance. An isolated Prince preview now evaluates body animation and a skeleton-attached sword from original resources. A separate frozen reference includes weapons. Secondary clothing motion, animated lighting, complete attachments and integration into the menu remain unfinished.
+part of the current appearance. The animated Prince, sword, articulated support and dagger can now be displayed on the balcony. His vertex lighting updates with animation, using captured light parameters. Native startup timing, remaining secondary motion, complete material fidelity and gameplay remain unfinished.
 
 The detailed menu screens now run in the native viewer alongside the 3D scenery:
 - Gamma, texture filtering, window resolution and V-Sync can be changed there,
@@ -108,7 +108,7 @@ See the [native prototype workflow](README-dev.md#native-menu-workflow) and the 
 | Scene rendering | Reconstructed 3D environment with textures, materials, fog, transparency and selected postprocessing effects | Original lighting and overall visual fidelity remain incomplete
 | Animation and effects | Animated vegetation, curtains, birds, rain, particles, flames and other menu effects | Timing, activation and some visual behaviors remain under investigation
 | Camera02 | Reconstructed nine-second camera transition triggered by Start New Game | No gameplay, cutscene or level loading follows |
-| Prince preview | Experimental character rendering with original-resource geometry, skeletal animation and sword attachment | Isolated diagnostic: secondary animation, dynamic lighting and gameplay remain incomplete
+| Prince preview | Original-resource skeletal animation, equipment and animated-normal lighting; prepared balcony integration | Experimental: native timing, general scene lighting, remaining secondary controllers and gameplay are incomplete |
 
 ### Testing and platform validation
 

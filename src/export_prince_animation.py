@@ -1,8 +1,7 @@
 """Export source-evaluated Prince body animation for the Vulkan diagnostic viewer.
 
 Draw states and frozen lighting still come from the previous diagnostic capture.
-No captured matrices are used for vertex positions. The dagger is omitted
-until their attachment and secondary controllers are independently resolved.
+No captured matrices are used for vertex positions. The dagger uses a source-backed constrained diagnostic controller; native startup remains unverified.
 """
 import argparse
 import hashlib
@@ -13,11 +12,16 @@ import numpy as np
 from export_prince_preview import export as export_frozen
 from prince_resources import Resources, COMPONENTS
 from prince_animation import Skeleton, node
-from prince_attachments import holder_points
+from prince_attachments import holder_points, dagger_local
+from prince_sheath import configuration, encode
 
 
 def influences(resources, skeleton, component):
     mesh = component['geometry']
+    if component['mesh'] == '0x057CC7F4':
+        local=dagger_local(resources)
+        points=(np.c_[mesh['position'],np.ones(len(mesh['position']))]@local)[:,:3]
+        return [[(skeleton.index[0x130035EE],1.,p)] for p in points]
     if component['mesh'] == '0x3F000E05':
         return [[(skeleton.index[0x130035BE], 1., p)] for p in holder_points(resources, component)]
     if component['mesh'] == '0x33001050':
@@ -61,7 +65,7 @@ def export(sources,capture,output):
     report=export_frozen(sources,capture,output)
     r=Resources(sources);s=Skeleton(r)
     components={c['mesh'][2:]:c for c in (r.component(k) for k in COMPONENTS)}
-    excluded={'057CC7F4'}
+    excluded=set()
     path=output/'prince.ojscene';raw=path.read_bytes()
     nv,w,h,nlayers=struct.unpack_from('<4I',raw,8)
     old=np.frombuffer(raw,'<f4',count=nv*9,offset=76).reshape(nv,9)
@@ -105,6 +109,7 @@ def export(sources,capture,output):
         control+=struct.pack('<2I',index,len(weights))
         for bone,weight,p in weights:control+=struct.pack('<I4f',bone,weight,*p)
     (output/'prince.actor').write_bytes(control)
+    (output/'prince.sheath').write_bytes(encode(configuration(r),s.index[0x130035EE]))
     report.update(bounds=[lo.tolist(),hi.tolist()],camera=camera,components_rendered=len({d['component'] for d in evidence}),triangles=len(vertices)//3,draws=evidence,
                   sources=r.sources,animation_resource_records=r.used,scene_sha256=hashlib.sha256(blob).hexdigest(),
                   actor_sha256=hashlib.sha256(control).hexdigest(),animation=dict(bones=62,tracks=37,clip='2D000AD4',ticks_per_second=5.,duration_ticks=20,loop='diagnostic replay'))
@@ -112,12 +117,17 @@ def export(sources,capture,output):
         'Body positions use original skeleton, inverse binds, packed weights and animation keys; no captured pose matrices.',
         'Untracked secondary joints use source-local transforms; procedural clothing fidelity is not validated.',
         'Neutral face follows the head bone; facial expression/eye controllers are not implemented.',
-        'Dagger omitted: local orientation is validated, but the secondary sheath controller is not yet reproduced.',
+        'Dagger uses measured local orientation and source sheath constraints. Fixed 125 Hz diagnostic stepping resets from rest with each clip; native startup and wind activation are not reproduced.',
         'Holder internal joints use the source sheathed clip 3F000E32; other holder actions are not selected.',
         'Sword uses its source snap transform and Spine2; reflection and material slot remapping remain unimplemented.',
         'Lighting colors and draw states remain from the frozen diagnostic capture; animated normal lighting is not implemented.',
         'Five ticks/second matches the short native sample; action selection and looping semantics remain unverified.',
         'Standalone diagnostic, not integrated into the menu or gameplay.']
+    (output/'manifest.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+    from prince_actor_lighting import prepare
+    report['animated_lighting']=prepare(sources,capture,output)
+    report['limitations']=[x for x in report['limitations'] if not x.startswith('Lighting colors')]
+    report['limitations'].append('Normals and lighting colors update at runtime; lighting parameters and material states retain native-capture provenance.')
     (output/'manifest.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     return report
 

@@ -2,7 +2,7 @@
 
 [Project overview](README.md) · [Native engine guide](engine/README.md) · [Research observations](docs/observations/)
 
-**Documentation snapshot: 2026-11-14** 
+**Documentation snapshot: 2026-11-15**
 
 This document describes the current development workflows and points to dated evidence, it's not a compatibility guarantee. Original game inputs remain read-only.
 
@@ -11,7 +11,7 @@ This document describes the current development workflows and points to dated ev
 - Windows remains the primary development and integration platform.
 - The Rust engine has undergone initial native build, test and Vulkan validation on Windows, Linux and macOS. See [Platform and tool validation](#platform-and-tool-validation).
 - Windows PowerShell 5.1 remains the documented research shell.
-- Rust/Cargo, ash, winit and Vulkan are used for the native engine. Platform-specific build requirements are documented in [engine/README.md](engine/README.md).
+- Rust/Cargo, ash, winit and Vulkan are used for the native engine. Platform-specific build requirements are documented in [engine/README.md](engine/README.md#prerequisites).
 - The Vulkan SDK provides `glslc` for shader compilation. Khronos validation layers can be enabled for runtime checks.
 - Python with Pillow and NumPy supports research and exports; tkinter is used by the separate Python menu simulation.
 - C# helpers support selected research decoding tasks.
@@ -50,7 +50,7 @@ Initial native validation of the Rust engine on Linux and macOS was successfully
 | Linux | Rust workspace built<br>Menu and actor Vulkan rendering checked: **67 unit tests passed**<br>No Vulkan validation errors reported | PowerShell 7 and Python tools **not tested** on Linux |
 | macOS | Rust workspace built without macOS-specific source changes<br>Menu and separate Prince scene rendered: **67 unit tests passed**<br>Three runtime tests passed and no Vulkan validation errors reported | PowerShell 7 and Python tools **not tested** on macOS |
 
-For platform-specific build dependencies and current launch options, see [engine/README.md](engine/README.md). Avoid interpreting the cross-platform Rust tests as validation of the full preparation pipeline.
+For platform-specific build dependencies and current launch options, see [engine/README.md](engine/README.md#prerequisites). Avoid interpreting the cross-platform Rust tests as validation of the full preparation pipeline.
 
 ## Current implementation
 
@@ -62,7 +62,7 @@ The table describes **implementation scope**, not original-game fidelity. A veri
 | Native menu | Rust-drawn screens, profiles, keyboard-label capture, confirmations, gamma/filtering/resolution/V-Sync persistence | No real game saves, gameplay bindings, audio or gameplay |
 | Scene and camera | Reconstructed Sands of Time menu scene, texture/material paths, Camera02 nine-second baked transition | Original runtime scripting, full render-state and lighting parity unverified |
 | Scene effects | Selected animated UVs, palms, curtains, rain/splash, birds/flies, pollen, fog, cursor glow, fixtures and partial postprocessing | Native timing/random-state synchronization and full effect composition unresolved |
-| Prince diagnostics | Selected original-resource meshes/textures, isolated Vulkan preview, Rust skeletal animation/skinning and sampled validation | Not integrated gameplay, general actor loading, dynamic actor lighting or completed secondary controllers |
+| Prince diagnostics | Original-resource animation/skinning, constrained dagger, animated-normal lighting and prepared balcony integration | Native startup/loop timing, general scene-light loading, remaining secondary controllers and gameplay are incomplete |
 | Platform coverage | Windows primary; bounded Linux/macOS Rust build, test and Vulkan checks on 2026-11-14 | Python/PowerShell not validated cross-platform; no future compatibility guarantee |
 
 **Validation vocabulary:**
@@ -75,7 +75,7 @@ The table describes **implementation scope**, not original-game fidelity. A veri
 
 ## First-time setup
 
-1. Clone the repository and consult [engine/README.md](engine/README.md) for toolchain and Vulkan prerequisites.
+1. Clone the repository and consult [engine/README.md](engine/README.md#prerequisites) for toolchain and Vulkan prerequisites.
 2. For source-only checks, start with [Testing and validation](#testing-and-validation).
 3. For a visual preview, use original resources from your own installation and prepare the local exports described under [Native menu workflow](#native-menu-workflow) or [Actor diagnostics](#actor-diagnostics).
 4. For archives, resource analysis and research exports, follow [Research tool setup](#research-tool-setup) on the documented Windows research toolchain.
@@ -204,17 +204,30 @@ For the newer fixture-animation snapshot, see [fixture integration](docs/observa
 | `--no-menu-blur` | Bypass menu blur and associated composite path |
 | `--no-menu-additive` | Isolate additive path where supported |
 
-See the [engine guide](engine/README.md) and the linked [rendering observations](#research-and-evidence-index) for precise scope and required sidecars.
+See the [engine guide](engine/README.md#viewer-command-line-options) and the linked [rendering observations](#research-and-evidence-index) for precise scope and required sidecars.
 
 ## Actor diagnostics
 
-These are **isolated validation previews**, not playable characters or general-purpose runtime actor loading. The original-resource Prince diagnostic evaluates 62 body bones and 35 body transform channels from a 37-track clip. Secondary controllers, lighting and action selection are not fully implemented.
+These are **experimental validation previews**, not playable characters or general-purpose runtime actor loading. The Prince diagnostic evaluates 62 body bones and 35 body transform channels from a 37-track clip. The dagger uses source-backed sheath constraints, and vertex RGB updates with animated normals. Light parameters still come from a native capture; startup timing, other secondary controllers and action selection remain incomplete.
 
 From `engine/`, with the previously prepared local `.ojscene` and `.actor` sidecar:
 
 ```powershell
-cargo run -p jade-viewer -- --scene ../reports/prince-holder-animation-20261114/prince.ojscene --color-pipeline legacy-unorm --validation
+cargo run -p jade-viewer -- --scene ../reports/prince-sheath-animation-20261114/prince.ojscene --color-pipeline legacy-unorm --validation
 ```
+
+Keep the `.actor`, `.sheath` and `.actorlight` sidecars beside the isolated scene.
+The prepared balcony integration additionally uses `.placement` and preserves the menu's effect sidecars:
+
+```powershell
+cargo run -p jade-viewer -- --scene ../reports/menu-prince-20261115/menu.ojscene --menu ../reports/menu-fixtures-20261110/ui/menu.ojui --color-pipeline legacy-unorm --validation
+```
+
+This example requires existing local exports. The original checkpoint height is retained;
+its small measured difference from native ground placement is unresolved. See the
+[sheath, lighting and balcony validation](docs/observations/2026-11-15-prince-sheath-balcony.md)
+for preparation, tests and the distinction between measured calculations and diagnostic timing.
+This Windows update has not been revalidated on Linux/macOS.
 
 Research lineage and reproducible fixture requirements:
 
@@ -240,7 +253,7 @@ $pythonPath = (Get-Command python -ErrorAction Stop).Source
 
 Some decoding helpers also use C#. Ghidra and a JDK are optional for static analysis, neither is required for a prepared Vulkan viewer. Keep original archives read-only: create new destinations in `reports/`.
 
-The exact Python package and native development prerequisites are described in the relevant scripts and [engine guide](engine/README.md).
+The exact Python package and native development prerequisites are described in the relevant scripts and [engine guide](engine/README.md#prerequisites).
 
 ## Resource workflows
 
@@ -284,7 +297,7 @@ The report must contain `experiment.json`, `menus-assets/catalog.json` and avail
 | Scene textures and lighting | [Texture checks](docs/observations/2026-10-28-native-textures.md), [mipmap comparisons](docs/observations/2026-11-03-native-mips-aligned.md), [light receivers](docs/observations/2026-11-11-menu-light-receivers.md) |
 | Scene effects | [Palms](docs/observations/2026-11-01-palm-runtime.md), [rain](docs/observations/2026-11-03-vulkan-menu-rain.md), [fog/cursor](docs/observations/2026-11-08-vulkan-fog-cursor.md), [fixtures](docs/observations/2026-11-10-vulkan-fixtures.md) |
 | Postprocessing | [Blur](docs/observations/2026-11-03-vulkan-menu-blur.md), [additive](docs/observations/2026-11-03-vulkan-menu-additive.md) |
-| Prince actor | [Resource preview](docs/observations/2026-11-13-prince-resource-preview.md), [skeletal animation](docs/observations/2026-11-14-prince-skeletal-animation.md), [actor light terms](docs/observations/2026-11-12-actor-light-terms.md) |
+| Prince actor | [Sheath and balcony integration](docs/observations/2026-11-15-prince-sheath-balcony.md), [Resource preview](docs/observations/2026-11-13-prince-resource-preview.md), [skeletal animation](docs/observations/2026-11-14-prince-skeletal-animation.md), [actor light terms](docs/observations/2026-11-12-actor-light-terms.md) |
 | Design decisions and prior work | [Architecture decisions](docs/decisions/), [External research provenance](references/) |
 
 Detailed historical test counts, hashes, byte offsets, resource IDs, fixture requirements and unresolved hypotheses remain in their **dated source observations**. This guide intentionally does not duplicate a chronological research log.

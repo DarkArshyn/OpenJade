@@ -48,6 +48,9 @@ def verify(sources, capture, package, output):
     expected=bytearray(struct.pack('<I',len(times)))
     for time in times:
         expected+=struct.pack('<f',time);world=s.world((time*5)%20)
+        if (package/'prince.sheath').exists():
+            from prince_sheath import configuration,world as sheath_world
+            world=sheath_world(s,configuration(r),time)
         for weights in links:
             p=sum(weight*(np.r_[point,1.]@world[bone])[:3] for bone,weight,point in weights)
             expected+=struct.pack('<3f',*p)
