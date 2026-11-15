@@ -88,7 +88,49 @@ impl Scene {
             Ok(file) => {
                 let mut control = Vec::new();
                 file.take(32 * 1024 * 1024 + 1).read_to_end(&mut control)?;
-                scene.actor = Some(actor::Actor::decode(&control, scene.vertices.len() / 9)?);
+                let placement = match std::fs::File::open(path.with_extension("placement")) {
+                    Ok(file) => {
+                        let mut data = Vec::new();
+                        file.take(77).read_to_end(&mut data)?;
+                        Some(data)
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+                    Err(e) => return Err(e),
+                };
+                let count = if placement.is_some() {
+                    u32::from_le_bytes(
+                        control
+                            .get(16..20)
+                            .ok_or_else(|| invalid("Truncated actor"))?
+                            .try_into()
+                            .unwrap(),
+                    ) as usize
+                } else {
+                    scene.vertices.len() / 9
+                };
+                let mut actor = actor::Actor::decode(&control, count)?;
+                if let Some(data) = placement {
+                    actor.load_placement(&data, scene.vertices.len() / 9)?;
+                }
+                match std::fs::File::open(path.with_extension("sheath")) {
+                    Ok(file) => {
+                        let mut data = Vec::new();
+                        file.take(145).read_to_end(&mut data)?;
+                        actor.load_sheath(&data)?;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e),
+                }
+                match std::fs::File::open(path.with_extension("actorlight")) {
+                    Ok(file) => {
+                        let mut data = Vec::new();
+                        file.take(8 * 1024 * 1024 + 1).read_to_end(&mut data)?;
+                        actor.load_lighting(&data)?;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e),
+                }
+                scene.actor = Some(actor);
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),

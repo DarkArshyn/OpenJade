@@ -2,7 +2,7 @@
 
 [Project overview](../README.md) · [Developer guide](../README-dev.md) · [Research observations](../docs/observations/)
 
-**Documentation snapshot: 2026-11-14**
+**Documentation snapshot: 2026-11-15**
 
 The `engine/` directory contains OpenJade's experimental native engine implementation, developed in **Rust** with **Vulkan** rendering through `ash`.
 
@@ -260,14 +260,14 @@ Newer scene exports may contain additional effects and require corresponding sid
 The viewer also supports isolated Prince rendering and animation experiments using prepared original-resource data.
 
 ```shell
-cargo run -p jade-viewer -- --scene ../reports/prince-holder-animation-20261114/prince.ojscene --color-pipeline legacy-unorm --validation
+cargo run -p jade-viewer -- --scene ../reports/prince-sheath-animation-20261114/prince.ojscene --color-pipeline legacy-unorm --validation
 ```
 
-The local `prince.actor` sidecar must remain alongside the corresponding scene package.
+Keep `prince.actor`, `prince.sheath` and `prince.actorlight` beside the corresponding scene package. Prepared balcony scenes additionally use an actor `.placement` sidecar.
 
 This diagnostic evaluates skeletal animation and skinning in Rust. It is not a playable character implementation or a general-purpose actor runtime.
 
-See [Prince skeletal animation research](../docs/observations/2026-11-14-prince-skeletal-animation.md).
+See [Prince skeletal animation research](../docs/observations/2026-11-14-prince-skeletal-animation.md) and [sheath, lighting and balcony integration](../docs/observations/2026-11-15-prince-sheath-balcony.md). The [developer actor workflow](../README-dev.md#actor-diagnostics) includes the prepared menu launch command.
 
 ## Workspace architecture
 
@@ -421,9 +421,9 @@ The experimental actor preview supports:
 
 The current diagnostic evaluates 62 body bones and 35 transform channels from an original 37-track clip.
 
-Secondary animation controllers, complete equipment attachment behavior, dynamic actor lighting and integration into a gameplay runtime remain incomplete.
+The source-backed dagger controller and animated-normal lighting also run in a prepared balcony scene. Lighting parameters retain capture provenance. Native startup/loop timing, other secondary controllers, complete equipment behavior, general scene-light loading and gameplay remain incomplete.
 
-This is an isolated validation environment, not a playable Prince implementation.
+This remains a diagnostic integration, not a playable Prince implementation.
 
 #### Prince of Persia: Warrior Within (2004)
 
@@ -483,7 +483,10 @@ Examples include:
 - `menu.flight` for mesh bird animation data.
 - `menu.pollen` for luminous particles.
 - `menu.fixtures` for fixture animation.
-- `prince.actor` for the isolated Prince animation diagnostic.
+- `.actor`, `.sheath` and `.actorlight` for Prince animation, constrained equipment and animated-normal lighting.
+- `.placement` for a bounded actor vertex range and rigid scene placement.
+
+See [actor sidecar formats](../docs/formats/actor-diagnostic-sidecars.md).
 
 Other effect or deformation sidecars may also be present, depending on the export.
 

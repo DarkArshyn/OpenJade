@@ -1,6 +1,9 @@
 //! Independent CPU skeleton evaluation for the source-derived Prince diagnostic.
 use crate::invalid;
 use std::io;
+mod lighting;
+mod sheath;
+pub type RenderVertex = (usize, [f32; 3], Option<[f32; 3]>);
 type Matrix = [[f32; 4]; 4];
 struct Bone {
     parent: i32,
@@ -17,6 +20,9 @@ struct Influence {
     point: [f32; 3],
 }
 pub struct Actor {
+    placement: Option<(usize, Matrix)>,
+    sheath: Option<sheath::Sheath>,
+    lighting: Option<lighting::Lighting>,
     bones: Vec<Bone>,
     order: Vec<usize>,
     tracks: Vec<Track>,
@@ -74,7 +80,7 @@ fn slerp(a: [f32; 4], mut b: [f32; 4], t: f32) -> [f32; 4] {
         dot = -dot;
     }
     dot = dot.min(1.);
-    if (dot - 1.).abs() <= 1.00000001e-7 {
+    if (dot - 1.).abs() <= 1e-7 {
         return a;
     }
     let angle = dot.acos();
@@ -239,6 +245,9 @@ impl Actor {
             return Err(invalid("Trailing actor bytes"));
         }
         Ok(Self {
+            placement: None,
+            sheath: None,
+            lighting: None,
             bones,
             order,
             tracks,
@@ -247,7 +256,15 @@ impl Actor {
             duration,
         })
     }
-    pub fn positions(&self, seconds: f64) -> Vec<(usize, [f32; 3])> {
+    pub fn load_sheath(&mut self, data: &[u8]) -> io::Result<()> {
+        let control = sheath::Sheath::decode(data, self.bones.len())?;
+        if self.bones[control.bone].parent < 0 || self.duration / self.rate > 10. {
+            return Err(invalid("Sheath requires parent"));
+        }
+        self.sheath = Some(control);
+        Ok(())
+    }
+    fn base_world(&self, seconds: f64) -> Vec<Matrix> {
         // Repeating this selected clip is a diagnostic policy, not a recovered action state machine.
         let tick = if seconds.is_finite() && seconds >= 0. {
             (seconds * f64::from(self.rate)).rem_euclid(f64::from(self.duration)) as f32
@@ -275,6 +292,108 @@ impl Actor {
                 multiply(local[i], world[p as usize])
             };
         }
+        world
+    }
+    fn evaluated_world(&self, seconds: f64) -> Vec<Matrix> {
+        let mut world = self.base_world(seconds);
+        if let Some(c) = &self.sheath {
+            // Diagnostic replay resets at clip boundaries. Native startup/action selection is separate.
+            let period = f64::from(self.duration / self.rate);
+            let time = if seconds.is_finite() && seconds >= 0. {
+                seconds.rem_euclid(period)
+            } else {
+                0.
+            };
+            let parent = self.bones[c.bone].parent as usize;
+            let first = self.base_world(0.);
+            let mut state = c.initial(first[parent]);
+            let steps = (time * 125.).floor() as usize;
+            for step in 1..=steps {
+                let pose = self.base_world(step as f64 / 125.);
+                c.step(&mut state, pose[parent], 1. / 125.);
+            }
+            let remaining = (time - steps as f64 / 125.) as f32;
+            if remaining > 1e-7 {
+                c.step(&mut state, world[parent], remaining);
+            }
+            world[c.bone] = c.matrix(&state, self.bones[c.bone].local, world[parent]);
+            let mut changed = vec![false; self.bones.len()];
+            changed[c.bone] = true;
+            for &i in &self.order {
+                let p = self.bones[i].parent;
+                if i != c.bone && p >= 0 && changed[p as usize] {
+                    world[i] = multiply(self.bones[i].local, world[p as usize]);
+                    changed[i] = true;
+                }
+            }
+        }
+        world
+    }
+    pub fn load_placement(&mut self, data: &[u8], scene_vertices: usize) -> io::Result<()> {
+        if data.len() != 76 || &data[..8] != b"OJAPL001" {
+            return Err(invalid("Invalid actor placement"));
+        }
+        let mut r = Reader { data, at: 8 };
+        let offset = r.u32()? as usize;
+        let mut m = [[0.; 4]; 4];
+        for row in &mut m {
+            for value in row {
+                *value = r.float()?;
+            }
+        }
+        if offset
+            .checked_add(self.vertices.len())
+            .is_none_or(|n| n > scene_vertices)
+            || (0..3).any(|i| m[i][3] != 0. || m[3][i].abs() > 10000.)
+            || m[3][3] != 1.
+        {
+            return Err(invalid("Invalid actor placement extent"));
+        }
+        for i in 0..3 {
+            for j in 0..3 {
+                let dot = (0..3).map(|k| m[i][k] * m[j][k]).sum::<f32>();
+                if (dot - if i == j { 1. } else { 0. }).abs() > 1e-4 {
+                    return Err(invalid("Nonrigid actor placement"));
+                }
+            }
+        }
+        self.placement = Some((offset, m));
+        Ok(())
+    }
+    fn placed(&self, index: usize, p: [f32; 3]) -> (usize, [f32; 3]) {
+        if let Some((offset, m)) = self.placement {
+            (
+                offset + index,
+                std::array::from_fn(|j| m[3][j] + (0..3).map(|i| p[i] * m[i][j]).sum::<f32>()),
+            )
+        } else {
+            (index, p)
+        }
+    }
+    pub fn load_lighting(&mut self, data: &[u8]) -> io::Result<()> {
+        self.lighting = Some(lighting::Lighting::decode(data, self)?);
+        Ok(())
+    }
+    pub fn render_vertices(&self, seconds: f64) -> Vec<RenderVertex> {
+        let world = self.evaluated_world(seconds);
+        let positions = self.skin_positions(&world);
+        let colors = self
+            .lighting
+            .as_ref()
+            .map(|l| l.colors(self, &world, &positions));
+        positions
+            .into_iter()
+            .enumerate()
+            .map(|(i, (index, p))| {
+                let (index, p) = self.placed(index, p);
+                (index, p, colors.as_ref().and_then(|c| c[i]))
+            })
+            .collect()
+    }
+    pub fn positions(&self, seconds: f64) -> Vec<(usize, [f32; 3])> {
+        self.skin_positions(&self.evaluated_world(seconds))
+    }
+    fn skin_positions(&self, world: &[Matrix]) -> Vec<(usize, [f32; 3])> {
         self.vertices
             .iter()
             .map(|(index, weights)| {
@@ -294,6 +413,108 @@ impl Actor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn placement_is_rigid_bounded_and_does_not_change_local_lighting_space() {
+        let mut actor = Actor::decode(&fixture(), 1).unwrap();
+        let mut data = b"OJAPL001".to_vec();
+        data.extend(4u32.to_le_bytes());
+        for row in 0..4 {
+            for col in 0..4 {
+                let value: f32 = if row == 3 && col == 0 {
+                    100.
+                } else if row == col {
+                    1.
+                } else {
+                    0.
+                };
+                data.extend(value.to_le_bytes());
+            }
+        }
+        actor.load_placement(&data, 5).unwrap();
+        assert_eq!(actor.render_vertices(0.)[0], (4, [110., 1., 0.], None));
+        assert_eq!(actor.positions(0.)[0], (0, [10., 1., 0.]));
+        assert!(actor.load_placement(&data, 4).is_err());
+        for n in 0..data.len() {
+            assert!(actor.load_placement(&data[..n], 5).is_err());
+        }
+        data[12..16].copy_from_slice(&2f32.to_le_bytes());
+        assert!(actor.load_placement(&data, 5).is_err());
+    }
+    fn lighting_fixture(active: u32) -> Vec<u8> {
+        let mut data = b"OJALIT01".to_vec();
+        data.extend(1u32.to_le_bytes());
+        let mut values = [0f32; 31];
+        values[0] = 0.1;
+        values[3] = 1.;
+        values[6] = 0.5;
+        values[9] = 1.;
+        for value in values {
+            data.extend(value.to_le_bytes());
+        }
+        data.extend(active.to_le_bytes());
+        if active == 1 {
+            for v in [1f32, 0., 0.] {
+                data.extend(v.to_le_bytes());
+            }
+        }
+        data
+    }
+    #[test]
+    fn animated_normals_change_light_and_fixed_material_keeps_its_color() {
+        let mut actor = Actor::decode(&fixture(), 1).unwrap();
+        let data = lighting_fixture(1);
+        actor.load_lighting(&data).unwrap();
+        assert_eq!(actor.render_vertices(0.)[0].2, Some([0.6, 0., 0.]));
+        actor.bones[0].local[0][0] = -1.;
+        actor.bones[0].local[1][1] = -1.;
+        assert_eq!(actor.render_vertices(0.)[0].2, Some([0.1, 0., 0.]));
+        for n in 0..data.len() {
+            assert!(actor.load_lighting(&data[..n]).is_err());
+        }
+        actor.load_lighting(&lighting_fixture(0)).unwrap();
+        assert_eq!(actor.render_vertices(0.)[0].2, None);
+    }
+    #[test]
+    #[ignore = "Requires the private actor lighting fixture"]
+    fn source_lighting_parity() {
+        let path = std::path::PathBuf::from(std::env::var("OPENJADE_ACTOR_FIXTURE").unwrap());
+        let data = std::fs::read(&path).unwrap();
+        let count = u32::from_le_bytes(data[16..20].try_into().unwrap()) as usize;
+        let mut actor = Actor::decode(&data, count).unwrap();
+        actor
+            .load_sheath(&std::fs::read(path.with_extension("sheath")).unwrap())
+            .unwrap();
+        actor
+            .load_lighting(&std::fs::read(path.with_extension("actorlight")).unwrap())
+            .unwrap();
+        let data = std::fs::read(path.with_extension("lightingposes")).unwrap();
+        assert_eq!(&data[..8], b"OJCLR001");
+        let mut r = Reader { data: &data, at: 8 };
+        let frames = r.u32().unwrap();
+        assert_eq!(r.u32().unwrap() as usize, count);
+        let mut maximum = 0f32;
+        let mut fixed = 0;
+        for _ in 0..frames {
+            let time = r.float().unwrap();
+            for (_, _, color) in actor.render_vertices(f64::from(time)) {
+                let expected = [r.float().unwrap(), r.float().unwrap(), r.float().unwrap()];
+                if expected[0] < 0. {
+                    assert!(color.is_none());
+                    fixed += 1;
+                } else {
+                    let color = color.unwrap();
+                    for i in 0..3 {
+                        maximum = maximum.max((color[i] - expected[i]).abs());
+                    }
+                }
+            }
+        }
+        assert_eq!(r.at, data.len());
+        assert!(fixed > 0);
+        println!("Animated lighting maximum RGB difference: {maximum}");
+        assert!(maximum < 2e-5);
+    }
+
     fn fixture() -> Vec<u8> {
         let mut b = b"OJACT001".to_vec();
         for n in [2u32, 1, 1] {
@@ -361,7 +582,10 @@ mod tests {
         let path = std::path::PathBuf::from(std::env::var("OPENJADE_ACTOR_FIXTURE").unwrap());
         let data = std::fs::read(path.with_extension("actor")).unwrap();
         let count = u32::from_le_bytes(data[16..20].try_into().unwrap()) as usize;
-        let actor = Actor::decode(&data, count).unwrap();
+        let mut actor = Actor::decode(&data, count).unwrap();
+        if let Ok(control) = std::fs::read(path.with_extension("sheath")) {
+            actor.load_sheath(&control).unwrap();
+        }
         let bytes = std::fs::read(path.with_extension("poses")).unwrap();
         let mut r = Reader {
             data: &bytes,

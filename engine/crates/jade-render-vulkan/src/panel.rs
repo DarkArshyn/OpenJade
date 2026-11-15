@@ -18,7 +18,7 @@ use texture_resource::Texture;
 
 pub(super) struct AnimationFrame<'a> {
     pub elapsed: f64,
-    pub actor: &'a [(usize, [f32; 3])],
+    pub actor: &'a [jade_assets::actor::RenderVertex],
     pub palms: &'a [jade_assets::palms::PalmVertex],
     pub curtain: &'a [jade_assets::rido2::Curtain],
     pub rain: [Option<&'a jade_assets::rain::Rain>; 5],
@@ -849,7 +849,14 @@ impl Panel {
                 vk::WHOLE_SIZE,
                 vk::MemoryMapFlags::empty(),
             )?;
-            for (index, xyz) in actor {
+            for (index, xyz, color) in actor {
+                if let Some(rgb) = color {
+                    std::ptr::copy_nonoverlapping(
+                        rgb.as_ptr(),
+                        ptr.cast::<f32>().add(index * 9 + 5),
+                        3,
+                    );
+                }
                 std::ptr::copy_nonoverlapping(xyz.as_ptr(), ptr.cast::<f32>().add(index * 9), 3);
             }
             for rain in rain.into_iter().flatten() {

@@ -424,7 +424,7 @@ impl Presenter {
                 .as_ref()
                 .and_then(|s| s.actor.as_ref())
                 .map(|a| {
-                    a.positions(
+                    a.render_vertices(
                         self.fixed_seconds
                             .map(f64::from)
                             .unwrap_or_else(|| self.material_clock.elapsed().as_secs_f64()),
