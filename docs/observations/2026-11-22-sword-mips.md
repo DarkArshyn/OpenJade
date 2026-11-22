@@ -66,13 +66,17 @@ performance equivalence.
 Prepared scene: `reports/menu-prince-mips-20261122/menu.ojscene`.
 The native UI bundle remains `reports/menu-fixtures-20261110/ui/menu.ojui`.
 
-Later follow-up: [sword material-index selection resolved](2026-11-22-sword-material-selection.md).
 
 ## Remaining investigation
 
-The internal remapping of sword material slots 2 and 4 remains unresolved.
-Their observed diffuse rendering is documented in the
-[sword reflection integration](2026-11-17-sword-vulkan.md).
-Full GOG image parity and mip-chain validation for other actor textures are separate
-tasks. The native base mip-chain uncertainty in that older observation is now
-resolved specifically for `13006B64`.
+The material-index selection uncertainty for sword slots 2 and 4 was resolved
+in a subsequent investigation conducted on 2026-11-22.
+Both requested indices select the last available entry (index 1) in the
+original two-entry material pack. See
+[sword material-pack selection](2026-11-22-sword-material-selection.md)
+for native evidence, implementation details and validation limits.
+
+Full GOG image parity and mip-chain validation for other actor textures remain
+separate tasks. The native base mip-chain uncertainty documented in the older
+[sword reflection integration](2026-11-17-sword-vulkan.md) is resolved
+specifically for resource `13006B64`.
