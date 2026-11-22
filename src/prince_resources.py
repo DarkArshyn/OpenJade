@@ -10,6 +10,14 @@ from inspect_menu_scene_links import static_links
 COMPONENTS=(0x057CC7FF,0x057CC800,0x3F000E24,0x13005EEA,0x1300695C,
             0x1300695F,0x13006962,0x13006955,0x1300695D,0x13006959,0x1300695E,0x130033F7)
 
+def material_slot(materials, requested):
+    """Resolve a nonnegative index in a nonempty decoded PC material pack."""
+    if not materials or not isinstance(requested, int) or requested < 0:
+        raise ValueError('Unsupported empty material pack or negative index')
+    # Native selection is independently observed to retain the last available entry.
+    return min(requested, len(materials) - 1)
+
+
 class Resources:
     def __init__(self, paths):
         self.by={};self.sources=[];self.used={}

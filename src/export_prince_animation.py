@@ -119,13 +119,29 @@ def export(sources,capture,output):
         'Neutral face follows the head bone; facial expression/eye controllers are not implemented.',
         'Dagger uses measured local orientation and source sheath constraints. Fixed 125 Hz diagnostic stepping retains state across body loops; native startup and wind activation are not reproduced.',
         'Holder internal joints use the source sheathed clip 3F000E32; other holder actions are not selected.',
-        'Sword uses its source snap transform and Spine2; reflection and material slot remapping remain unimplemented.',
+        'Sword uses its source snap transform and Spine2; material pack indices use the verified last-entry bound and measured reflection is exported.',
         'Lighting colors and draw states remain from the frozen diagnostic capture; animated normal lighting is not implemented.',
         'Five ticks/second matches the short native sample; action selection and looping semantics remain unverified.',
         'Standalone diagnostic, not integrated into the menu or gameplay.']
     (output/'manifest.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     from prince_actor_lighting import prepare
     report['animated_lighting']=prepare(sources,capture,output)
+    from prince_light_origins import encode as encode_light_origins
+    (output/'prince.actororigins').write_bytes(encode_light_origins(r,report))
+    reflection=report.get('reflection')
+    if reflection is not None:
+        first,count=reflection[:2]
+        if first!=0 or struct.unpack_from('<2I',draws[0])!=(first,count):
+            raise ValueError('Reflection draw changed during actor filtering')
+        (output/'prince.reflection').write_bytes(b'OJREFL01'+struct.pack('<3I3f',*reflection))
+    if reflection is not None:
+        first=reflection[0]
+        layer=int(vertices[first,8])
+        levels,info=r.texture(0x13006B64)
+        if info['sizes']!=[[128,64],[64,32],[32,16],[16,8],[8,8]]:
+            raise ValueError('Unverified sword mip layout')
+        pixels=b''.join(image[:max(1,64>>i),:max(1,128>>i)].tobytes() for i,image in enumerate(levels))
+        (output/'prince.swordmips').write_bytes(b'OJSWMP01'+struct.pack('<2I',layer,5)+pixels)
     report['limitations']=[x for x in report['limitations'] if not x.startswith('Lighting colors')]
     report['limitations'].append('Normals and lighting colors update at runtime; lighting parameters and material states retain native-capture provenance.')
     (output/'manifest.json').write_text(json.dumps(report,indent=2),encoding='utf-8')

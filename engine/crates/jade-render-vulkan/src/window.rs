@@ -63,6 +63,7 @@ pub struct Presenter {
     panel: Option<Panel>,
     scene: Option<Scene>,
     fixed_seconds: Option<f32>,
+    generated_light: jade_assets::actor::GeneratedLight,
     material_clock: std::time::Instant,
     palm_frame: Option<std::time::Instant>,
     menu_frame: Option<([f32; 20], Option<u32>)>,
@@ -90,6 +91,21 @@ impl Presenter {
             .transpose()?;
         if fixed_seconds.is_some_and(|t| !t.is_finite() || !(0.0..=86400.0).contains(&t)) {
             return Err("Invalid OPENJADE_CAPTURE_SECONDS".into());
+        }
+        let generated_light = match std::env::var("OPENJADE_GENERATED_LIGHT").as_deref() {
+            Err(std::env::VarError::NotPresent) | Ok("dynamic") => {
+                jade_assets::actor::GeneratedLight::Dynamic
+            }
+            Ok("frozen") => jade_assets::actor::GeneratedLight::Frozen,
+            Ok("off") => jade_assets::actor::GeneratedLight::Disabled,
+            _ => {
+                return Err(
+                    "Invalid OPENJADE_GENERATED_LIGHT; expected dynamic, frozen or off".into(),
+                )
+            }
+        };
+        if std::env::var_os("OPENJADE_GENERATED_LIGHT").is_some() {
+            println!("Generated light diagnostic: {generated_light:?}");
         }
         // SAFETY: retained Arc keeps native handles alive. Each created handle is
         // immediately owned by Presenter and released in reverse dependency order.
@@ -122,6 +138,7 @@ impl Presenter {
             )?;
             let mut this = Self {
                 fixed_seconds,
+                generated_light,
                 material_clock: std::time::Instant::now(),
                 palm_frame: None,
                 debug_loader: ash::ext::debug_utils::Instance::new(&entry, &instance),
@@ -450,16 +467,38 @@ impl Presenter {
             // These owned CPU results do not access mapped GPU resources. Evaluate them
             // while the previous submission/presentation may still be in flight.
             let now = std::time::Instant::now();
+            let actor_seconds = self
+                .fixed_seconds
+                .map(f64::from)
+                .unwrap_or_else(|| self.material_clock.elapsed().as_secs_f64());
             let actor_positions = self
                 .scene
                 .as_ref()
                 .and_then(|s| s.actor.as_ref())
                 .map(|a| {
-                    a.render_vertices(
-                        self.fixed_seconds
-                            .map(f64::from)
-                            .unwrap_or_else(|| self.material_clock.elapsed().as_secs_f64()),
-                    )
+                    let camera = self
+                        .menu_frame
+                        .map(|(camera, _)| [camera[0], camera[1], camera[2]])
+                        .unwrap_or_else(|| {
+                            self.scene.as_ref().unwrap().camera[..3].try_into().unwrap()
+                        });
+                    a.render_vertices_for_camera(actor_seconds, camera, self.generated_light)
+                })
+                .unwrap_or_default();
+            let reflection_uvs = self
+                .scene
+                .as_ref()
+                .and_then(|s| {
+                    let r = s.reflection?;
+                    let actor = s.actor.as_ref()?;
+                    let (right, up) = self
+                        .menu_frame
+                        .map(|(c, _)| (c[4..7].try_into().unwrap(), c[8..11].try_into().unwrap()))
+                        .unwrap_or((
+                            s.camera[3..6].try_into().unwrap(),
+                            s.camera[6..9].try_into().unwrap(),
+                        ));
+                    Some(actor.reflection_uvs(actor_seconds, r.first, r.count, right, up))
                 })
                 .unwrap_or_default();
             let (palms, curtain, mut rain, mut splash, mut birds, mut pollen, mut fog, mut flight) =
@@ -573,6 +612,7 @@ impl Presenter {
                 (&self.native_ui, &self.native_opacities),
                 AnimationFrame {
                     actor: &actor_positions,
+                    reflection_uvs: &reflection_uvs,
                     elapsed: self
                         .fixed_seconds
                         .map(f64::from)

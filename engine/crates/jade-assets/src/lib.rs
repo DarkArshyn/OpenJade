@@ -36,8 +36,11 @@ pub mod flight;
 pub mod native_mips;
 pub mod palms;
 pub mod rain;
+pub mod reflection;
 pub mod rido2;
 pub struct Scene {
+    pub sword_mips: Option<native_mips::SwordMips>,
+    pub reflection: Option<reflection::Reflection>,
     pub actor: Option<actor::Actor>,
     pub rain: Option<rain::Rain>,
     pub splashes: Option<rain::Rain>,
@@ -130,7 +133,43 @@ impl Scene {
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {}
                     Err(e) => return Err(e),
                 }
+                match std::fs::File::open(path.with_extension("actororigins")) {
+                    Ok(file) => {
+                        let mut data = Vec::new();
+                        file.take(13 + 4 * count as u64).read_to_end(&mut data)?;
+                        actor.load_light_origins(&data)?;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e),
+                }
                 scene.actor = Some(actor);
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        match std::fs::File::open(path.with_extension("reflection")) {
+            Ok(file) => {
+                let mut data = Vec::new();
+                file.take(33).read_to_end(&mut data)?;
+                scene.reflection = Some(reflection::Reflection::decode(&data, &scene)?);
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        match std::fs::File::open(path.with_extension("swordmips")) {
+            Ok(file) => {
+                let mut data = Vec::new();
+                file.take(43665).read_to_end(&mut data)?;
+                let layer = data
+                    .get(8..12)
+                    .map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize)
+                    .filter(|i| *i < scene.texture_sizes.len())
+                    .ok_or_else(|| invalid("Invalid sword mip layer"))?;
+                scene.sword_mips = Some(native_mips::SwordMips::decode(
+                    &data,
+                    &scene.texture_sizes,
+                    &scene.texture_pixels(layer),
+                )?);
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),
@@ -460,6 +499,8 @@ impl Scene {
         Ok(Self {
             leaf: None,
             trunk_mips: None,
+            reflection: None,
+            sword_mips: None,
             actor: None,
             curtains: Vec::new(),
             palms: palms::decode(palm_bytes, &vertices)?,
@@ -712,6 +753,8 @@ mod native_texture_tests {
             camera: [0.; 13],
             leaf: None,
             trunk_mips: None,
+            reflection: None,
+            sword_mips: None,
             actor: None,
             curtains: Vec::new(),
             palms: vec![],

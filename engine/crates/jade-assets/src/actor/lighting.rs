@@ -1,9 +1,40 @@
-//! Animated-normal lighting diagnostic; lighting inputs retain capture provenance.
+//! Animated-normal lighting and the measured menu camera-relative contribution.
 use super::{invalid, Actor, Matrix, Reader};
 use std::io;
+
+/// Diagnostic controls for the generated light, independent of named scene lights.
+#[derive(Clone, Copy, Debug, Default)]
+pub enum GeneratedLight {
+    #[default]
+    Dynamic,
+    Frozen,
+    Disabled,
+}
+
+/// World direction for the measured positive-polar-angle menu configuration.
+/// Degenerate or nonfinite inputs are unsupported and retain the captured term.
+pub fn generated_direction(owner: [f32; 3], camera: [f32; 3]) -> Option<[f32; 3]> {
+    if !owner.into_iter().chain(camera).all(f32::is_finite) {
+        return None;
+    }
+    let x = f64::from(owner[0]) - f64::from(camera[0]);
+    let y = f64::from(owner[1]) - f64::from(camera[1]);
+    if x.hypot(y) <= 1e-12 {
+        return None;
+    }
+    // Parameters independently measured in the GOG executable and transition capture.
+    let azimuth = y.atan2(x) + f64::from(std::f32::consts::PI);
+    let polar = f64::from(0.3_f32);
+    Some([
+        (polar.sin() * azimuth.cos()) as f32,
+        (polar.sin() * azimuth.sin()) as f32,
+        polar.cos() as f32,
+    ])
+}
+
 pub(super) struct Lighting {
     values: [f32; 31],
-    normals: Vec<Option<Vec<[f32; 3]>>>,
+    pub(super) normals: Vec<Option<Vec<[f32; 3]>>>,
 }
 fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
     (0..3).map(|i| a[i] * b[i]).sum()
@@ -71,14 +102,21 @@ impl Lighting {
         actor: &Actor,
         world: &[Matrix],
         positions: &[(usize, [f32; 3])],
+        generated: &[Option<[f32; 3]>],
+        mode: GeneratedLight,
     ) -> Vec<Option<[f32; 3]>> {
-        let c = &self.values;
+        let mut values = self.values;
+        if matches!(mode, GeneratedLight::Disabled) {
+            values[12..15].fill(0.);
+        }
+        let c = &values;
         actor
             .vertices
             .iter()
             .zip(&self.normals)
             .zip(positions)
-            .map(|(((_, weights), normals), (_, p))| {
+            .enumerate()
+            .map(|(index, (((_, weights), normals), (_, p)))| {
                 let ns = normals.as_ref()?;
                 let mut n = [0.; 3];
                 for (w, v) in weights.iter().zip(ns) {
@@ -93,7 +131,13 @@ impl Lighting {
                 n = n.map(|x| x / length);
                 let mut rgb = [c[0], c[1], c[2]];
                 for off in [3, 9] {
-                    let d = [c[off], c[off + 1], c[off + 2]];
+                    let fallback = [c[off], c[off + 1], c[off + 2]];
+                    let slot = actor.light_origins.as_ref().map_or(0, |o| o.slots[index]);
+                    let d = if off == 9 {
+                        generated.get(slot).copied().flatten().unwrap_or(fallback)
+                    } else {
+                        fallback
+                    };
                     let factor = dot(n, d).max(0.);
                     for j in 0..3 {
                         rgb[j] += factor * c[off + 3 + j];

@@ -2,7 +2,7 @@
 
 [Project overview](README.md) · [Native engine guide](engine/README.md) · [Research observations](docs/observations/)
 
-**Documentation snapshot: 2026-11-15**
+**Documentation snapshot: 2026-11-22**
 
 This document describes the current development workflows and points to dated evidence, it's not a compatibility guarantee. Original game inputs remain read-only.
 
@@ -62,7 +62,7 @@ The table describes **implementation scope**, not original-game fidelity. A veri
 | Native menu | Rust-drawn screens, profiles, keyboard-label capture, confirmations, gamma/filtering/resolution/V-Sync persistence | No real game saves, gameplay bindings, audio or gameplay |
 | Scene and camera | Reconstructed Sands of Time menu scene, texture/material paths, Camera02 nine-second baked transition | Original runtime scripting, full render-state and lighting parity unverified |
 | Scene effects | Selected animated UVs, palms, curtains, rain/splash, birds/flies, pollen, fog, cursor glow, fixtures and partial postprocessing | Native timing/random-state synchronization and full effect composition unresolved |
-| Prince diagnostics | Original-resource animation/skinning, constrained dagger, animated-normal lighting and prepared balcony integration | Native startup/loop timing, general scene-light loading, remaining secondary controllers and gameplay are incomplete |
+| Prince diagnostics | Original-resource animation/skinning, constrained dagger, animated-normal lighting, sword reflection and prepared balcony integration | Native startup/loop timing, general scene-light loading, remaining secondary controllers and gameplay are incomplete |
 | Platform coverage | Windows primary; bounded Linux/macOS Rust build, test and Vulkan checks on 2026-11-14 | Python/PowerShell not validated cross-platform; no future compatibility guarantee |
 
 **Validation vocabulary:**
@@ -208,7 +208,7 @@ See the [engine guide](engine/README.md#viewer-command-line-options) and the lin
 
 ## Actor diagnostics
 
-These are **experimental validation previews**, not playable characters or general-purpose runtime actor loading. The Prince diagnostic evaluates 62 body bones and 35 body transform channels from a 37-track clip. The dagger uses source-backed sheath constraints, and vertex RGB updates with animated normals. Light parameters still come from a native capture; startup timing, other secondary controllers and action selection remain incomplete.
+These are **experimental validation previews**, not playable characters or general-purpose runtime actor loading. The Prince diagnostic evaluates 62 body bones and 35 body transform channels from a 37-track clip. The dagger uses source-backed sheath constraints, and vertex RGB updates with animated normals. Isolated legacy previews retain captured light parameters; startup timing, other secondary controllers and action selection remain incomplete.
 
 From `engine/`, with the previously prepared local `.ojscene` and `.actor` sidecar:
 
@@ -218,12 +218,14 @@ cargo run -p jade-viewer -- --scene ../reports/prince-sheath-animation-20261114/
 
 Keep the `.actor`, `.sheath` and `.actorlight` sidecars beside the isolated scene.
 
+Prepared menu exports now derive ambient and three named light terms from original scene resources. The generated direction now follows the active camera for the placed Prince. [Runtime and final-pixel checks](docs/observations/2026-11-17-camera02-runtime-light.md) verify the calculation, its visible contribution in Vulkan and endpoint frame timings. [Receiver origins](docs/observations/2026-11-17-receiver-origins.md) now follow Spine2 for the support and Head for the face; nine other components retain the Prince root. The [sword reflection](docs/observations/2026-11-17-sword-vulkan.md) now follows animated normals and the active camera, using its original texture and tint; the other two sword groups retain their measured diffuse material. [Material selection](docs/observations/2026-11-22-sword-material-selection.md) now uses the verified last-entry bound from the original pack instead of a sword-specific material key. GOG final-pixel parity remains unresolved. See [source-light validation](docs/observations/2026-11-17-prince-source-lights.md).
+
 The first diagnostic sheath cycle is prepared at load time; subsequent steps preserve controller state across body loops. Development builds optimize animation math, and CPU simulation overlaps the previous GPU submission. Bounded profiling distinguishes GPU command execution from CPU presentation waits. See the [CPU performance measurements and limits](docs/observations/2026-11-15-prince-performance.md).
 
 The prepared balcony integration additionally uses `.placement` and preserves the menu's effect sidecars:
 
 ```powershell
-cargo run -p jade-viewer -- --scene ../reports/menu-prince-grounded-20261115/menu.ojscene --menu ../reports/menu-fixtures-20261110/ui/menu.ojui --color-pipeline legacy-unorm --validation
+cargo run -p jade-viewer -- --scene ../reports/menu-prince-mips-20261122/menu.ojscene --menu ../reports/menu-fixtures-20261110/ui/menu.ojui --color-pipeline legacy-unorm --validation
 ```
 
 This example requires existing local exports. Initial Z now comes from the original balcony collision triangle; checkpoint XY and orientation are preserved. The engine applies this placement to animated vertices through `.placement`. See [grounded menu integration](docs/observations/2026-11-15-prince-grounded-integration.md) for source/native comparisons, tests and frame timings. Continuous collision and player movement are not implemented.
@@ -299,7 +301,7 @@ The report must contain `experiment.json`, `menus-assets/catalog.json` and avail
 | Scene textures and lighting | [Texture checks](docs/observations/2026-10-28-native-textures.md), [mipmap comparisons](docs/observations/2026-11-03-native-mips-aligned.md), [light receivers](docs/observations/2026-11-11-menu-light-receivers.md) |
 | Scene effects | [Palms](docs/observations/2026-11-01-palm-runtime.md), [rain](docs/observations/2026-11-03-vulkan-menu-rain.md), [fog/cursor](docs/observations/2026-11-08-vulkan-fog-cursor.md), [fixtures](docs/observations/2026-11-10-vulkan-fixtures.md) |
 | Postprocessing | [Blur](docs/observations/2026-11-03-vulkan-menu-blur.md), [additive](docs/observations/2026-11-03-vulkan-menu-additive.md) |
-| Prince actor | [Sheath and balcony integration](docs/observations/2026-11-15-prince-sheath-balcony.md), [Resource preview](docs/observations/2026-11-13-prince-resource-preview.md), [skeletal animation](docs/observations/2026-11-14-prince-skeletal-animation.md), [actor light terms](docs/observations/2026-11-12-actor-light-terms.md) |
+| Prince actor | [Material-pack selection](docs/observations/2026-11-22-sword-material-selection.md), [Native sword mipmaps](docs/observations/2026-11-22-sword-mips.md), [Sword reflection and Vulkan validation](docs/observations/2026-11-17-sword-vulkan.md), [Sheath and balcony integration](docs/observations/2026-11-15-prince-sheath-balcony.md), [Resource preview](docs/observations/2026-11-13-prince-resource-preview.md), [skeletal animation](docs/observations/2026-11-14-prince-skeletal-animation.md), [actor light terms](docs/observations/2026-11-12-actor-light-terms.md) |
 | Design decisions and prior work | [Architecture decisions](docs/decisions/), [External research provenance](references/) |
 
 Detailed historical test counts, hashes, byte offsets, resource IDs, fixture requirements and unresolved hypotheses remain in their **dated source observations**. This guide intentionally does not duplicate a chronological research log.

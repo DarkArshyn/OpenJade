@@ -60,11 +60,11 @@ animate in real time. The two suspended flames also deform using their decoded v
 - Seven palms, three additional plants and the hanging vine move using their decoded vertex deformation. Three mesh birds follow their waypoint loops and flap their wings. Two bird particle emitters and two fly swarms also animate in the menu. Drifting points of light come from a separate pollen emitter.
 - Eight splash emitters animate alongside the two falling-rain emitters. The rain uses decoded parameters and verified particle geometry, colors and blending; timing remains under comparison.
 - A measured scene-blur effect softens the 3D background while keeping the menu interface sharp.
-- Scene textures retain their decoded dimensions; filtering and generated mipmaps can be compared in the viewer.
+- Scene textures retain their decoded dimensions; selected textures now use verified native mipmaps, including the sword. Filtering and generated mipmaps remain available for other textures.
 - Lighting, transparency ordering and visual fidelity remain under investigation; this is not a faithful recreation yet.
 - The sky and moon are now included; some small effects remain absent.
 - Named scene lights are not yet reproduced as runtime lights; recorded vertex colors provide
-part of the current appearance. The animated Prince, sword, articulated support and dagger can now be displayed on the balcony, with initial placement derived from the original collision geometry. His vertex lighting updates with animation, using captured light parameters. Native startup timing, remaining secondary motion, complete material fidelity and gameplay remain unfinished.
+part of the current appearance. The animated Prince, sword, articulated support and dagger can now be displayed on the balcony, with initial placement derived from the original collision geometry. His vertex lighting updates with animation; the prepared menu uses original scene data for its ambient color and three named lights, and a generated directional contribution follows the camera during the balcony transition. Native startup timing, remaining secondary motion, complete material fidelity and gameplay remain unfinished.
 
 The detailed menu screens now run in the native viewer alongside the 3D scenery:
 - Gamma, texture filtering, window resolution and V-Sync can be changed there,

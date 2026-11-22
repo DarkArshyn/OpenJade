@@ -2,7 +2,7 @@
 
 [Project overview](../README.md) · [Developer guide](../README-dev.md) · [Research observations](../docs/observations/)
 
-**Documentation snapshot: 2026-11-15**
+**Documentation snapshot: 2026-11-22**
 
 The `engine/` directory contains OpenJade's experimental native engine implementation, developed in **Rust** with **Vulkan** rendering through `ash`.
 
@@ -15,7 +15,7 @@ The Rust workspace currently provides:
 - Camera02 playback and selected runtime animations.
 - Animated vegetation, curtains, particles, birds, fog and light-fixture effects.
 - Selected scene postprocessing, including blur and partial additive composition.
-- Experimental Prince rendering, skeletal animation and skinning using original game resources.
+- Experimental Prince rendering, skeletal animation, skinning and camera-dependent sword reflection using original game resources, including verified native sword mipmaps.
 - Bounded resource-package readers, automated tests and diagnostic rendering tools.
 
 > [!IMPORTANT]
@@ -263,7 +263,9 @@ The viewer also supports isolated Prince rendering and animation experiments usi
 cargo run -p jade-viewer -- --scene ../reports/prince-sheath-animation-20261114/prince.ojscene --color-pipeline legacy-unorm --validation
 ```
 
-Keep `prince.actor`, `prince.sheath` and `prince.actorlight` beside the corresponding scene package. Prepared balcony scenes additionally use an actor `.placement` sidecar. The latest export derives initial height from the source balcony collision triangle; the runtime applies that matrix to animated vertices. This is not a continuous collision solver. See [grounded integration and launch command](../docs/observations/2026-11-15-prince-grounded-integration.md).
+Keep `prince.actor`, `prince.sheath` and `prince.actorlight` beside the corresponding scene package.
+
+Prepared menu exports now derive ambient and three named light terms from original scene resources. The generated direction now follows the active camera for the placed Prince. [Runtime and final-pixel checks](../docs/observations/2026-11-17-camera02-runtime-light.md) verify the calculation, its visible contribution in Vulkan and endpoint frame timings. [Receiver origins](../docs/observations/2026-11-17-receiver-origins.md) now follow Spine2 for the support and Head for the face; nine other components retain the Prince root. GOG final-pixel parity remains unresolved. See [source-light validation](../docs/observations/2026-11-17-prince-source-lights.md). Prepared balcony scenes additionally use an actor `.placement` sidecar. The latest export derives initial height from the source balcony collision triangle; the runtime applies that matrix to animated vertices. This is not a continuous collision solver. See [grounded integration and launch command](../docs/observations/2026-11-15-prince-grounded-integration.md).
 
 The sheath diagnostic caches its first cycle and retains controller state across subsequent body loops; fractional and backwards queries remain deterministic. See [native loop-state validation](../docs/observations/2026-11-15-prince-sheath-loop.md). To measure actor CPU cost independently of Vulkan, run `cargo run -p jade-assets --example actor_timing -- PATH_TO_PRINCE.actor`. See [performance evidence and scope](../docs/observations/2026-11-15-prince-performance.md).
 

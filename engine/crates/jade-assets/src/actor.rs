@@ -2,6 +2,7 @@
 use crate::invalid;
 use std::io;
 mod lighting;
+pub use lighting::{generated_direction, GeneratedLight};
 mod sheath;
 pub type RenderVertex = (usize, [f32; 3], Option<[f32; 3]>);
 type Matrix = [[f32; 4]; 4];
@@ -19,7 +20,12 @@ struct Influence {
     weight: f32,
     point: [f32; 3],
 }
+struct LightOrigins {
+    bones: Vec<Option<usize>>,
+    slots: Vec<usize>,
+}
 pub struct Actor {
+    light_origins: Option<LightOrigins>,
     placement: Option<(usize, Matrix)>,
     sheath: Option<sheath::Sheath>,
     sheath_states: Vec<sheath::State>,
@@ -247,6 +253,7 @@ impl Actor {
             return Err(invalid("Trailing actor bytes"));
         }
         Ok(Self {
+            light_origins: None,
             placement: None,
             sheath: None,
             sheath_states: Vec::new(),
@@ -436,18 +443,159 @@ impl Actor {
         Ok(())
     }
     pub fn render_vertices(&self, seconds: f64) -> Vec<RenderVertex> {
+        self.render_lit_vertices(seconds, None, GeneratedLight::Frozen)
+    }
+    /// Optional source-mapped receiver origins; older packages use the actor root.
+    pub fn load_light_origins(&mut self, data: &[u8]) -> io::Result<()> {
+        if data.get(..8) != Some(b"OJAORG01") || data.len() != 12 + 4 * self.vertices.len() {
+            return Err(invalid("Invalid actor light origins"));
+        }
+        let mut reader = Reader { data, at: 8 };
+        if reader.u32()? as usize != self.vertices.len() {
+            return Err(invalid("Actor light origin count"));
+        }
+        let mut bones = vec![None];
+        let mut slots = Vec::with_capacity(self.vertices.len());
+        for _ in &self.vertices {
+            let value = reader.u32()?;
+            let bone = if value == u32::MAX {
+                None
+            } else {
+                if value as usize >= self.bones.len() {
+                    return Err(invalid("Actor light origin bone"));
+                }
+                Some(value as usize)
+            };
+            let slot = if let Some(at) = bones.iter().position(|b| *b == bone) {
+                at
+            } else {
+                bones.push(bone);
+                bones.len() - 1
+            };
+            slots.push(slot);
+        }
+        self.light_origins = Some(LightOrigins { bones, slots });
+        Ok(())
+    }
+    /// Recompute the generated term only for actors with a world placement.
+    pub fn render_vertices_for_camera(
+        &self,
+        seconds: f64,
+        camera: [f32; 3],
+        mode: GeneratedLight,
+    ) -> Vec<RenderVertex> {
+        self.render_lit_vertices(seconds, Some(camera), mode)
+    }
+    fn generated_directions(
+        &self,
+        world: &[Matrix],
+        camera: Option<[f32; 3]>,
+        mode: GeneratedLight,
+    ) -> Vec<Option<[f32; 3]>> {
+        let Some((_, matrix)) = self.placement else {
+            return vec![None];
+        };
+        let Some(camera) = camera else {
+            return vec![None];
+        };
+        if !matches!(mode, GeneratedLight::Dynamic) {
+            return vec![None];
+        }
+        let bones = self
+            .light_origins
+            .as_ref()
+            .map_or(&[None][..], |o| o.bones.as_slice());
+        bones
+            .iter()
+            .map(|bone| {
+                let local = bone.map_or([0.; 3], |i| world[i][3][..3].try_into().unwrap());
+                let origin = std::array::from_fn(|j| {
+                    matrix[3][j] + (0..3).map(|i| local[i] * matrix[i][j]).sum::<f32>()
+                });
+                generated_direction(origin, camera).map(|direction| {
+                    let local: [f32; 3] =
+                        std::array::from_fn(|i| (0..3).map(|j| direction[j] * matrix[i][j]).sum());
+                    let length = local.iter().map(|x| x * x).sum::<f32>().sqrt();
+                    local.map(|x| x / length)
+                })
+            })
+            .collect()
+    }
+    fn render_lit_vertices(
+        &self,
+        seconds: f64,
+        camera: Option<[f32; 3]>,
+        mode: GeneratedLight,
+    ) -> Vec<RenderVertex> {
         let world = self.evaluated_world(seconds);
         let positions = self.skin_positions(&world);
+        let generated = self.generated_directions(&world, camera, mode);
         let colors = self
             .lighting
             .as_ref()
-            .map(|l| l.colors(self, &world, &positions));
+            .map(|l| l.colors(self, &world, &positions, &generated, mode));
         positions
             .into_iter()
             .enumerate()
             .map(|(i, (index, p))| {
                 let (index, p) = self.placed(index, p);
                 (index, p, colors.as_ref().and_then(|c| c[i]))
+            })
+            .collect()
+    }
+    pub fn has_reflection_normals(&self, first: usize, count: usize) -> bool {
+        let Some(light) = &self.lighting else {
+            return false;
+        };
+        let offset = self.placement.map_or(0, |p| p.0);
+        let mut found = 0;
+        for ((index, _), normals) in self.vertices.iter().zip(&light.normals) {
+            if (*index + offset) >= first && (*index + offset) < first.saturating_add(count) {
+                if normals.is_none() {
+                    return false;
+                }
+                found += 1;
+            }
+        }
+        found == count
+    }
+    /// Unnormalized animated normals projected with the measured native UV rule.
+    pub fn reflection_uvs(
+        &self,
+        seconds: f64,
+        first: usize,
+        count: usize,
+        right: [f32; 3],
+        up: [f32; 3],
+    ) -> Vec<(usize, [f32; 2])> {
+        let Some(light) = &self.lighting else {
+            return Vec::new();
+        };
+        let world = self.evaluated_world(seconds);
+        let offset = self.placement.map_or(0, |p| p.0);
+        self.vertices
+            .iter()
+            .zip(&light.normals)
+            .filter_map(|((index, weights), normals)| {
+                let index = index + offset;
+                if index < first || index >= first.saturating_add(count) {
+                    return None;
+                }
+                let normals = normals.as_ref()?;
+                let mut n = [0.; 3];
+                for (w, normal) in weights.iter().zip(normals) {
+                    for (j, v) in n.iter_mut().enumerate() {
+                        *v +=
+                            w.weight * (0..3).map(|i| normal[i] * world[w.bone][i][j]).sum::<f32>();
+                    }
+                }
+                if let Some((_, matrix)) = self.placement {
+                    n = std::array::from_fn(|j| (0..3).map(|i| n[i] * matrix[i][j]).sum());
+                }
+                // Native view Y is downward; renderer camera.up points upward.
+                let u = 0.5 - 0.5 * (0..3).map(|i| right[i] * n[i]).sum::<f32>();
+                let v = 0.5 + 0.5 * (0..3).map(|i| up[i] * n[i]).sum::<f32>();
+                Some((index, [u, v]))
             })
             .collect()
     }
@@ -607,6 +755,22 @@ mod tests {
         data
     }
     #[test]
+    fn reflection_retains_normal_length_and_uses_upward_camera_convention() {
+        let mut actor = Actor::decode(&fixture(), 1).unwrap();
+        actor.load_lighting(&lighting_fixture(1)).unwrap();
+        assert!(actor.has_reflection_normals(0, 1));
+        assert!(!actor.has_reflection_normals(0, 2));
+        let uvs = actor.reflection_uvs(0., 0, 1, [1., 0., 0.], [1., 0., 0.]);
+        assert_eq!(uvs, vec![(0, [0., 1.])]);
+        actor.lighting.as_mut().unwrap().normals[0] = Some(vec![[2., 0., 0.]]);
+        assert_eq!(
+            actor.reflection_uvs(0., 0, 1, [1., 0., 0.], [1., 0., 0.]),
+            vec![(0, [-0.5, 1.5])]
+        );
+        actor.load_lighting(&lighting_fixture(0)).unwrap();
+        assert!(!actor.has_reflection_normals(0, 1));
+    }
+    #[test]
     fn animated_normals_change_light_and_fixed_material_keeps_its_color() {
         let mut actor = Actor::decode(&fixture(), 1).unwrap();
         let data = lighting_fixture(1);
@@ -660,6 +824,146 @@ mod tests {
         assert!(fixed > 0);
         println!("Animated lighting maximum RGB difference: {maximum}");
         assert!(maximum < 2e-5);
+    }
+
+    #[test]
+    fn generated_light_uses_world_camera_and_inverse_placement() {
+        let mut actor = Actor::decode(&fixture(), 1).unwrap();
+        let mut data = lighting_fixture(1);
+        // Remove named light; retain ambient and a red generated contribution.
+        data[12 + 6 * 4..12 + 7 * 4].copy_from_slice(&0f32.to_le_bytes());
+        data[12 + 12 * 4..12 + 13 * 4].copy_from_slice(&0.5f32.to_le_bytes());
+        actor.load_lighting(&data).unwrap();
+        let m = [
+            [0., 1., 0., 0.],
+            [-1., 0., 0., 0.],
+            [0., 0., 1., 0.],
+            [10., 20., 30., 1.],
+        ];
+        actor.placement = Some((0, m));
+        let camera = [10., 30., 30.];
+        let value = actor.render_vertices_for_camera(0., camera, GeneratedLight::Dynamic);
+        let expected = 0.1 + 0.5 * 0.3f32.sin();
+        assert!((value[0].2.unwrap()[0] - expected).abs() < 1e-6);
+        let away = actor.render_vertices_for_camera(0., [10., 10., 30.], GeneratedLight::Dynamic);
+        assert!((away[0].2.unwrap()[0] - 0.1).abs() < 1e-6);
+        assert_eq!(value[0].1, away[0].1);
+        let off = actor.render_vertices_for_camera(0., camera, GeneratedLight::Disabled);
+        assert_eq!(off[0].2, Some([0.1, 0., 0.]));
+        let frozen = actor.render_vertices_for_camera(0., camera, GeneratedLight::Frozen);
+        assert_eq!(frozen, actor.render_vertices(0.));
+        let fallback =
+            actor.render_vertices_for_camera(0., [10., 20., 30.], GeneratedLight::Dynamic);
+        assert_eq!(fallback, frozen);
+        actor.load_lighting(&lighting_fixture(0)).unwrap();
+        assert_eq!(
+            actor.render_vertices_for_camera(0., camera, GeneratedLight::Dynamic)[0].2,
+            None
+        );
+    }
+    #[test]
+    fn generated_direction_handles_quadrants_and_invalid_inputs() {
+        for camera in [[1., 0., 0.], [-1., 0., 0.], [0., 1., 0.], [0., -1., 0.]] {
+            let d = generated_direction([0.; 3], camera).unwrap();
+            assert!((d[0] * camera[0] + d[1] * camera[1] - 0.3f32.sin()).abs() < 1e-6);
+            assert!((d[2] - 0.3f32.cos()).abs() < 1e-6);
+        }
+        assert!(generated_direction([0.; 3], [0., 0., 1.]).is_none());
+        assert!(generated_direction([f32::NAN, 0., 0.], [1.; 3]).is_none());
+        assert!(generated_direction([0.; 3], [f32::INFINITY, 0., 0.]).is_none());
+    }
+
+    #[test]
+    fn light_origins_follow_bones_without_moving_geometry() {
+        let mut actor = Actor::decode(&fixture(), 1).unwrap();
+        actor.vertices.push((
+            0,
+            vec![Influence {
+                bone: 0,
+                weight: 1.,
+                point: [0.; 3],
+            }],
+        ));
+        let mut light = lighting_fixture(1);
+        light[8..12].copy_from_slice(&2u32.to_le_bytes());
+        light[36..40].copy_from_slice(&0f32.to_le_bytes());
+        light[60..64].copy_from_slice(&0.5f32.to_le_bytes());
+        light.extend(1u32.to_le_bytes());
+        for x in [1f32, 0., 0.] {
+            light.extend(x.to_le_bytes());
+        }
+        actor.load_lighting(&light).unwrap();
+        actor.placement = Some((
+            0,
+            [
+                [1., 0., 0., 0.],
+                [0., 1., 0., 0.],
+                [0., 0., 1., 0.],
+                [0., 0., 0., 1.],
+            ],
+        ));
+        let mut bytes = b"OJAORG01".to_vec();
+        for x in [2, u32::MAX, 1] {
+            bytes.extend(x.to_le_bytes());
+        }
+        actor.load_light_origins(&bytes).unwrap();
+        let first = actor.render_vertices_for_camera(0., [20., 10., 0.], GeneratedLight::Dynamic);
+        assert_eq!(first[0].1, first[1].1);
+        assert!(first[0].2.unwrap()[0] > first[1].2.unwrap()[0]);
+        assert!((first[1].2.unwrap()[0] - (0.1 + 0.5 * 0.3f32.sin() / 2f32.sqrt())).abs() < 1e-6);
+        let next = actor.render_vertices_for_camera(1., [20., 10., 0.], GeneratedLight::Dynamic);
+        assert_eq!(first[0].2, next[0].2);
+        assert!((next[1].2.unwrap()[0] - 0.1).abs() < 1e-6);
+        for n in 0..bytes.len() {
+            assert!(actor.load_light_origins(&bytes[..n]).is_err());
+        }
+        let mut bad = bytes.clone();
+        bad[16..20].copy_from_slice(&2u32.to_le_bytes());
+        assert!(actor.load_light_origins(&bad).is_err());
+        bad = bytes.clone();
+        bad.extend(0u32.to_le_bytes());
+        assert!(actor.load_light_origins(&bad).is_err());
+        bad = bytes.clone();
+        bad[8..12].copy_from_slice(&1u32.to_le_bytes());
+        assert!(actor.load_light_origins(&bad).is_err());
+        assert_eq!(
+            first,
+            actor.render_vertices_for_camera(0., [20., 10., 0.], GeneratedLight::Dynamic)
+        );
+    }
+
+    #[test]
+    #[ignore = "Requires private menu package with source receiver origins"]
+    fn source_receiver_origins_affect_only_mapped_colors() {
+        let path = std::path::PathBuf::from(std::env::var("OPENJADE_ORIGIN_SCENE").unwrap());
+        let mut scene = crate::Scene::load(&path).unwrap();
+        let actor = scene.actor.as_mut().unwrap();
+        let origins = actor.light_origins.take().unwrap();
+        assert_eq!(origins.bones, vec![None, Some(3), Some(5)]);
+        let camera = [-92.80204, -0.96494, 3.93218];
+        let common = actor.render_vertices_for_camera(2., camera, GeneratedLight::Dynamic);
+        actor.light_origins = Some(origins);
+        let individual = actor.render_vertices_for_camera(2., camera, GeneratedLight::Dynamic);
+        let slots = &actor.light_origins.as_ref().unwrap().slots;
+        let mut changes = 0;
+        let mut maximum = 0f32;
+        for (i, (a, b)) in common.iter().zip(&individual).enumerate() {
+            assert_eq!(a.0, b.0);
+            assert_eq!(a.1, b.1);
+            if slots[i] == 0 {
+                assert_eq!(a.2, b.2);
+            }
+            if let (Some(x), Some(y)) = (a.2, b.2) {
+                let error = (0..3).map(|j| (x[j] - y[j]).abs()).fold(0f32, f32::max);
+                if error > 0. {
+                    changes += 1;
+                    maximum = maximum.max(error);
+                }
+            }
+        }
+        assert!(changes > 0);
+        assert!(maximum < 0.01);
+        println!("receiver origin changed_vertices={changes} maximum_rgb_delta={maximum}");
     }
 
     fn fixture() -> Vec<u8> {

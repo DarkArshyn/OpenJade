@@ -11,7 +11,7 @@ from pathlib import Path
 import struct
 import numpy as np
 from PIL import Image
-from prince_resources import Resources, COMPONENTS
+from prince_resources import Resources, COMPONENTS, material_slot
 from replay_actor_vertex_shader import formula
 
 
@@ -67,18 +67,14 @@ def export(sources,capture,output,yaw=0.):
     body=next(r for r in rows if r['mesh']=='13008426')
     inverse_view=np.linalg.inv(body['constants'][4:8])
     pending={key:list(c['geometry']['groups']) for key,c in by.items()}
-    textures={};texture_info=[];vertices=[];draws=[];evidence=[];warnings=[]
+    textures={};texture_info=[];vertices=[];draws=[];evidence=[];warnings=[];reflection=None
     texture_cache={}
     for row in rows:
         c=by[row['mesh']];mesh=c['geometry'];groups=pending[row['mesh']]
         if not groups or groups[0]['count']!=row['count']:raise ValueError('Capture order/count differs from original face groups')
         group=groups.pop(0);slot=group['slot']
-        if slot>=len(c['materials']):
-            # Same native base texture was independently matched in all three sword draws.
-            if row['mesh']!='33001050' or slot not in (2,4):raise ValueError('Unresolved material slot')
-            material_key=0x13006BBC
-            warnings.append(f'Sword slot {slot}: base texture validated by native readback; original slot remapping is unresolved.')
-        else:material_key=c['materials'][slot]
+        resolved_slot=material_slot(c['materials'],slot)
+        material_key=c['materials'][resolved_slot]
         material=resources.get(material_key)
         if len(material) not in (48,72) or struct.unpack_from('<2I',material)!=(5,6):raise ValueError('Unsupported actor material')
         tk=struct.unpack_from('<I',material,44)[0]
@@ -95,7 +91,14 @@ def export(sources,capture,output,yaw=0.):
         if tss[0,4]==4 and tss[0,6]==3:alpha=(state[60]>>24)/255
         elif tss[0,4] not in (2,4):raise ValueError('Unsupported alpha operation')
         if row['path'].with_suffix('.ps').exists():
-            warnings.append('Sword reflection pixel shader is not reproduced; this diagnostic displays its original base texture and diffuse lighting.')
+            reflection_key=struct.unpack_from('<I',material,68)[0]
+            if reflection_key not in textures:
+                levels,info=resources.texture(reflection_key)
+                textures[reflection_key]=len(textures);texture_cache[reflection_key]=levels[0];texture_info.append(info)
+            # Packed material color is independently matched to native pixel constant K.
+            packed=struct.unpack_from('<I',material,8)[0]
+            tint=[(packed>>shift&255)/255 for shift in (0,8,16)]
+            reflection=(len(vertices),group['count']*3,textures[reflection_key],*tint)
         blend=0
         if state[27]:
             if (state[19],state[20])!=(5,6):raise ValueError('Unsupported blend factors')
@@ -106,7 +109,7 @@ def export(sources,capture,output,yaw=0.):
         first=len(vertices)
         vertices.extend(np.c_[pos[vi],uv,color[vi],np.full(len(vi),textures[tk])].tolist())
         draws.append((first,len(vi),blend,1 if state[14] else 0,[1.,1.,0.,0.,alpha,gain,0.,1.]))
-        evidence.append(dict(component=c['name'],mesh=c['mesh'],source_slot=slot,triangles=group['count'],
+        evidence.append(dict(component=c['name'],mesh=c['mesh'],source_slot=slot,resolved_slot=resolved_slot,triangles=group['count'],
                              material=f'{material_key:08X}',texture=f'{tk:08X}',native_depth_write=state[14],
                              blend=blend,alpha=alpha,capture=row['path'].name,
                              metadata_sha256=hashlib.sha256(row['path'].read_bytes()).hexdigest(),
@@ -125,7 +128,7 @@ def export(sources,capture,output,yaw=0.):
     for first,count,blend,write,params in draws:blob+=struct.pack('<4I8f',first,count,blend,write,*params)
     for w,h in sizes:blob+=struct.pack('<2I',w,h)
     excluded=[dict(component=by[key]['name'],groups=groups,reason='No draw observed in the captured initial main-target frame') for key,groups in pending.items() if groups]
-    report=dict(capture_bindings_sha256=hashlib.sha256((capture/(capture.name+'-bindings.txt')).read_bytes()).hexdigest(),
+    report=dict(reflection=reflection,capture_bindings_sha256=hashlib.sha256((capture/(capture.name+'-bindings.txt')).read_bytes()).hexdigest(),
                 sources=resources.sources,resource_records=resources.used,texture_info=texture_info,
                 components_rendered=len({e['component'] for e in evidence}),triangles=len(vertices)//3,draws=evidence,
                 excluded=excluded,bounds=[lo.tolist(),hi.tolist()],camera=camera,

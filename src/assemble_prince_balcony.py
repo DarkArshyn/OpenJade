@@ -5,6 +5,7 @@ import numpy as np
 from prince_resources import Resources
 from prince_animation import node
 from prince_ground import grounded_placement
+from prince_scene_lights import parameters
 
 def read_scene(path):
     raw=path.read_bytes();original=raw;magic=raw[:8];palms=b''
@@ -42,16 +43,37 @@ def assemble(menu,actor,source,output):
     raw=header+scene['vertices'].astype('<f4').tobytes()+vertices.astype('<f4').tobytes()+pixels.tobytes()+struct.pack('<I',len(draws))+b''.join(draws)+scene['sizes']+prince['sizes']+scene['rates']+prince['rates']+scene['palms']
     output.mkdir(parents=True);(output/'menu.ojscene').write_bytes(raw)
     for path in menu.parent.glob(menu.stem+'.*'):
-        if path.suffix!='.ojscene':shutil.copyfile(path,output/('menu'+path.suffix))
+        if path.suffix not in ('.ojscene','.actororigins','.reflection','.swordmips'):shutil.copyfile(path,output/('menu'+path.suffix))
     for suffix in ('.actor','.sheath','.actorlight'):
         shutil.copyfile(actor.with_suffix(suffix),output/('menu'+suffix))
+    reflection_path=actor.with_suffix('.reflection')
+    if reflection_path.exists():
+        data=bytearray(reflection_path.read_bytes())
+        if len(data)!=32 or data[:8]!=b'OJREFL01':raise ValueError('Invalid reflection sidecar')
+        first,count,layer=struct.unpack_from('<3I',data,8)
+        struct.pack_into('<3I',data,8,first+scene['nv'],count,layer+scene['nl'])
+        (output/'menu.reflection').write_bytes(data)
+    mip_path=actor.with_suffix('.swordmips')
+    if mip_path.exists():
+        data=bytearray(mip_path.read_bytes())
+        if len(data)!=43664 or data[:8]!=b'OJSWMP01':raise ValueError('Invalid sword mips')
+        layer=struct.unpack_from('<I',data,8)[0]
+        struct.pack_into('<I',data,8,layer+scene['nl'])
+        (output/'menu.swordmips').write_bytes(data)
+    origin_path=actor.with_suffix('.actororigins')
+    if origin_path.exists():shutil.copyfile(origin_path,output/'menu.actororigins')
+    light=bytearray((output/'menu.actorlight').read_bytes())
+    if len(light)<136 or light[:8]!=b'OJALIT01':raise ValueError('Invalid actor lighting sidecar')
+    values=parameters(r,placement,struct.unpack_from('<31f',light,12))
+    struct.pack_into('<31f',light,12,*values)
+    (output/'menu.actorlight').write_bytes(light)
     (output/'menu.placement').write_bytes(b'OJAPL001'+struct.pack('<I16f',scene['nv'],*placement.ravel()))
     report=dict(menu=str(menu.resolve()),actor=str(actor.resolve()),menu_sha256=hashlib.sha256(scene['raw']).hexdigest(),actor_sha256=hashlib.sha256(prince['raw']).hexdigest(),
                 scene_sha256=hashlib.sha256(raw).hexdigest(),checkpoint='0F0053D9',placement=placement.tolist(),grounding=grounding,source=r.sources,records=r.used,
                 actor_vertex_range=[scene['nv'],scene['nv']+prince['nv']],
                 limitations=['Initial menu placement uses the unique source collision intersection; continuous actor collision and movement are not implemented.',
                              'Animation repeats as an isolated diagnostic; no gameplay or native actor activation.',
-                             'Animated normals use captured fixed light parameters, not a general scene-light system.'])
+                             'Named fixed-menu light terms and ambient are source-derived; generated direction/color remain captured. No general scene-light system or Camera02 lighting validation.'])
     (output/'actor-integration.json').write_text(json.dumps(report,indent=2),encoding='utf-8');return report
 
 if __name__=='__main__':

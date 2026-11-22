@@ -1584,6 +1584,8 @@ mod tests {
         let camera = [0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1., 59.37908];
         let scene = Scene {
             actor: None,
+            reflection: None,
+            sword_mips: None,
             leaf: None,
             menu_blur: true,
             rain: None,
