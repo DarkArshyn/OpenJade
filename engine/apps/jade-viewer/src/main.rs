@@ -297,6 +297,7 @@ impl ApplicationHandler for App {
                     } else {
                         menu.tick(elapsed);
                     }
+                    p.prince_camera_state(menu.time.is_some_and(|t| t >= 9.));
                     p.menu_frame(menu.camera(), menu.vertex());
                 }
 
@@ -405,6 +406,7 @@ impl ApplicationHandler for App {
                     let size = p.window.inner_size();
                     menu.pixel_scale = viewport(size.width, size.height)[2] / 800.;
                     menu.render();
+                    p.prince_camera_state(menu.time.is_some_and(|t| t >= 9.));
                     p.menu_frame(menu.camera(), None);
                     p.native_ui(&menu.vertices, &menu.opacities);
                 }

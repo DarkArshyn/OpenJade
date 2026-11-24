@@ -2,7 +2,7 @@
 
 [Project overview](../README.md) · [Developer guide](../README-dev.md) · [Research observations](../docs/observations/)
 
-**Documentation snapshot: 2026-11-22**
+**Documentation snapshot: 2026-11-24**
 
 The `engine/` directory contains OpenJade's experimental native engine implementation, developed in **Rust** with **Vulkan** rendering through `ash`.
 
@@ -16,6 +16,7 @@ The Rust workspace currently provides:
 - Animated vegetation, curtains, particles, birds, fog and light-fixture effects.
 - Selected scene postprocessing, including blur and partial additive composition.
 - Experimental Prince rendering, skeletal animation, skinning and camera-dependent sword reflection using original game resources, including verified native sword mipmaps.
+- Optional source-backed Prince idle sequencing after Camera02 completes, with retained transform channels and continuous sheath simulation. See the [integration checks](../docs/observations/2026-11-24-prince-idle-vulkan.md).
 - Bounded resource-package readers, automated tests and diagnostic rendering tools.
 
 > [!IMPORTANT]

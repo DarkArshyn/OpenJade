@@ -67,6 +67,7 @@ pub struct Presenter {
     material_clock: std::time::Instant,
     palm_frame: Option<std::time::Instant>,
     menu_frame: Option<([f32; 20], Option<u32>)>,
+    idle_capture_start: Option<f64>,
     gamma: Option<u8>,
     native_ui: Vec<f32>,
     native_opacities: Vec<f32>,
@@ -163,6 +164,10 @@ impl Presenter {
                 panel: None,
                 scene,
                 menu_frame: None,
+                idle_capture_start: std::env::var("OPENJADE_PRINCE_IDLE_START")
+                    .ok()
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .filter(|s| s.is_finite() && (0. ..=86400.).contains(s)),
                 gamma: None,
                 native_ui: Vec::new(),
                 native_opacities: Vec::new(),
@@ -323,6 +328,15 @@ impl Presenter {
     pub fn set_gamma(&mut self, value: Option<u8>) {
         self.gamma = value;
     }
+    pub fn prince_camera_state(&self, completed: bool) {
+        if let Some(actor) = self.scene.as_ref().and_then(|s| s.actor.as_ref()) {
+            let seconds = self
+                .fixed_seconds
+                .map(f64::from)
+                .unwrap_or_else(|| self.material_clock.elapsed().as_secs_f64());
+            actor.set_idle_active(completed, seconds);
+        }
+    }
     pub fn menu_frame(&mut self, camera: [f32; 13], vertex: Option<u32>) {
         let mut constants = [0.; 20];
         for i in 0..4 {
@@ -471,6 +485,12 @@ impl Presenter {
                 .fixed_seconds
                 .map(f64::from)
                 .unwrap_or_else(|| self.material_clock.elapsed().as_secs_f64());
+            if let (Some(start), Some(actor)) = (
+                self.idle_capture_start,
+                self.scene.as_ref().and_then(|s| s.actor.as_ref()),
+            ) {
+                actor.set_idle_active(actor_seconds >= start, start);
+            }
             let actor_positions = self
                 .scene
                 .as_ref()

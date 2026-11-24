@@ -4,6 +4,7 @@ use std::io;
 mod lighting;
 pub use lighting::{generated_direction, GeneratedLight};
 mod sheath;
+mod tsot_idle;
 pub type RenderVertex = (usize, [f32; 3], Option<[f32; 3]>);
 type Matrix = [[f32; 4]; 4];
 struct Bone {
@@ -25,6 +26,7 @@ struct LightOrigins {
     slots: Vec<usize>,
 }
 pub struct Actor {
+    idle: Option<tsot_idle::Idle>,
     light_origins: Option<LightOrigins>,
     placement: Option<(usize, Matrix)>,
     sheath: Option<sheath::Sheath>,
@@ -253,6 +255,7 @@ impl Actor {
             return Err(invalid("Trailing actor bytes"));
         }
         Ok(Self {
+            idle: None,
             light_origins: None,
             placement: None,
             sheath: None,
@@ -266,6 +269,42 @@ impl Actor {
             rate,
             duration,
         })
+    }
+    /// Load the second source clip for the observed TSoT menu route.
+    pub fn load_idle(&mut self, data: &[u8]) -> io::Result<()> {
+        let other = Self::decode(data, self.vertices.len())?;
+        if self.bones.len() != 62
+            || self.duration != 20.
+            || self.rate != 5.
+            || other.duration != 73.
+            || other.bones.len() != self.bones.len()
+            || self
+                .bones
+                .iter()
+                .zip(&other.bones)
+                .any(|(a, b)| a.parent != b.parent || a.local != b.local)
+        {
+            return Err(invalid("Incompatible TSoT idle clip"));
+        }
+        self.idle = Some(tsot_idle::Idle {
+            tracks: other.tracks,
+            duration: other.duration as f64,
+            activated: std::cell::Cell::new(None),
+        });
+        Ok(())
+    }
+    /// Camera lifecycle drives activation; no scene-load timeout is used.
+    pub fn set_idle_active(&self, active: bool, seconds: f64) {
+        if !seconds.is_finite() || !(0. ..=86400.).contains(&seconds) {
+            return;
+        }
+        if let Some(idle) = &self.idle {
+            if active != idle.activated.get().is_some() {
+                idle.activated
+                    .set(if active { Some(seconds) } else { None });
+                *self.sheath_cursor.borrow_mut() = None;
+            }
+        }
     }
     pub fn load_sheath(&mut self, data: &[u8]) -> io::Result<()> {
         let control = sheath::Sheath::decode(data, self.bones.len())?;
@@ -309,6 +348,14 @@ impl Actor {
                 local[t.bone][3][..3].copy_from_slice(&q[..3]);
             }
         }
+        if let Some(idle) = &self.idle {
+            let time = if seconds.is_finite() && (0. ..=86400.).contains(&seconds) {
+                seconds
+            } else {
+                0.
+            };
+            local = idle.local(self, time);
+        }
         let mut world = local.clone();
         for &i in &self.order {
             let p = self.bones[i].parent;
@@ -332,7 +379,12 @@ impl Actor {
             };
             let parent = self.bones[c.bone].parent as usize;
             let steps = (time * 125.).floor() as usize;
-            let first_cycle = steps.min(self.sheath_states.len() - 1);
+            let first_cycle = steps.min(self.sheath_states.len() - 1).min(
+                self.idle
+                    .as_ref()
+                    .and_then(|i| i.activated.get())
+                    .map_or(usize::MAX, |t| (t * 125.).floor() as usize),
+            );
             let cached = self.sheath_cursor.borrow().clone();
             let (from, mut state) = match cached {
                 Some((at, state)) if at > first_cycle && at <= steps => (at, state),
@@ -622,6 +674,73 @@ impl Actor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "Requires source clips and private native palette samples"]
+    fn source_idle_native_rotations_and_sheath() {
+        let path = std::path::PathBuf::from(std::env::var("OPENJADE_ACTOR_FIXTURE").unwrap());
+        let bytes = std::fs::read(&path).unwrap();
+        let count = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
+        let mut actor = Actor::decode(&bytes, count).unwrap();
+        let idle = std::fs::read(path.with_extension("idle")).unwrap();
+        actor.load_idle(&idle).unwrap();
+        assert!(actor.load_idle(&idle[..idle.len() - 1]).is_err());
+        actor.set_idle_active(true, 0.);
+        let bytes = std::fs::read(path.with_extension("idleposes")).unwrap();
+        let samples = u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize;
+        let mut at = 4;
+        let mut worst = 0f64;
+        for _ in 0..samples {
+            let seconds = f64::from_le_bytes(bytes[at..at + 8].try_into().unwrap());
+            at += 8;
+            let local = actor.idle.as_ref().unwrap().local(&actor, seconds);
+            let mut error = 0.;
+            for matrix in local.iter().take(34) {
+                for row in matrix.iter().take(3) {
+                    for value in row.iter().take(3) {
+                        let expected = f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+                        at += 4;
+                        error += f64::from(*value - expected).powi(2);
+                    }
+                }
+            }
+            worst = worst.max((error / (34. * 9.)).sqrt());
+        }
+        assert_eq!(at, bytes.len());
+        println!("Native idle rotation RMS maximum: {worst}");
+        assert!(worst < 0.0002);
+        let state = actor.idle.as_ref().unwrap();
+        let a = state.local(&actor, 18.7);
+        let b = state.local(&actor, 23.7);
+        assert_eq!(a[1][3], b[1][3]);
+        assert_ne!(a[1][3], actor.bones[1].local[3]);
+        actor
+            .load_sheath(&std::fs::read(path.with_extension("sheath")).unwrap())
+            .unwrap();
+        for seconds in [18.5, 18.7, 25., 40., 80.] {
+            let cached = actor.evaluated_world(seconds);
+            let replay = actor.replayed_world(seconds);
+            for (a, b) in cached
+                .iter()
+                .flatten()
+                .flatten()
+                .zip(replay.iter().flatten().flatten())
+            {
+                assert!((a - b).abs() < 0.0001);
+            }
+        }
+        actor.set_idle_active(false, 81.);
+        actor.set_idle_active(true, 82.);
+        let cached = actor.evaluated_world(83.);
+        let replay = actor.replayed_world(83.);
+        for (a, b) in cached
+            .iter()
+            .flatten()
+            .flatten()
+            .zip(replay.iter().flatten().flatten())
+        {
+            assert!((a - b).abs() < 0.0001);
+        }
+    }
     #[test]
     fn placement_is_rigid_bounded_and_does_not_change_local_lighting_space() {
         let mut actor = Actor::decode(&fixture(), 1).unwrap();

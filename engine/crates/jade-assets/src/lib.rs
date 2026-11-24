@@ -115,6 +115,15 @@ impl Scene {
                 if let Some(data) = placement {
                     actor.load_placement(&data, scene.vertices.len() / 9)?;
                 }
+                match std::fs::File::open(path.with_extension("idle")) {
+                    Ok(file) => {
+                        let mut data = Vec::new();
+                        file.take(32 * 1024 * 1024 + 1).read_to_end(&mut data)?;
+                        actor.load_idle(&data)?;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e),
+                }
                 match std::fs::File::open(path.with_extension("sheath")) {
                     Ok(file) => {
                         let mut data = Vec::new();

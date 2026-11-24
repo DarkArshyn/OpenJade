@@ -2,7 +2,7 @@
 
 [Project overview](README.md) · [Native engine guide](engine/README.md) · [Research observations](docs/observations/)
 
-**Documentation snapshot: 2026-11-22**
+**Documentation snapshot: 2026-11-24**
 
 This document describes the current development workflows and points to dated evidence, it's not a compatibility guarantee. Original game inputs remain read-only.
 
@@ -62,7 +62,7 @@ The table describes **implementation scope**, not original-game fidelity. A veri
 | Native menu | Rust-drawn screens, profiles, keyboard-label capture, confirmations, gamma/filtering/resolution/V-Sync persistence | No real game saves, gameplay bindings, audio or gameplay |
 | Scene and camera | Reconstructed Sands of Time menu scene, texture/material paths, Camera02 nine-second baked transition | Original runtime scripting, full render-state and lighting parity unverified |
 | Scene effects | Selected animated UVs, palms, curtains, rain/splash, birds/flies, pollen, fog, cursor glow, fixtures and partial postprocessing | Native timing/random-state synchronization and full effect composition unresolved |
-| Prince diagnostics | Original-resource animation/skinning, constrained dagger, animated-normal lighting, sword reflection and prepared balcony integration | Native startup/loop timing, general scene-light loading, remaining secondary controllers and gameplay are incomplete |
+| Prince diagnostics | Original-resource animation/skinning, equipment, lighting, sword reflection and the observed menu idle sequence tied to Camera02 | Absolute startup phase, general action selection, remaining secondary controllers and gameplay are incomplete |
 | Platform coverage | Windows primary; bounded Linux/macOS Rust build, test and Vulkan checks on 2026-11-14 | Python/PowerShell not validated cross-platform; no future compatibility guarantee |
 
 **Validation vocabulary:**
@@ -208,7 +208,7 @@ See the [engine guide](engine/README.md#viewer-command-line-options) and the lin
 
 ## Actor diagnostics
 
-These are **experimental validation previews**, not playable characters or general-purpose runtime actor loading. The Prince diagnostic evaluates 62 body bones and 35 body transform channels from a 37-track clip. The dagger uses source-backed sheath constraints, and vertex RGB updates with animated normals. Isolated legacy previews retain captured light parameters; startup timing, other secondary controllers and action selection remain incomplete.
+These are **experimental validation previews**, not playable characters or general-purpose runtime actor loading. The Prince diagnostic evaluates 62 body bones and 35 body transform channels from a 37-track clip. The dagger uses source-backed sheath constraints, and vertex RGB updates with animated normals. Isolated legacy previews retain captured light parameters; absolute startup phase, other secondary controllers and general action selection remain incomplete. The optional `.idle` sidecar adds the 36 local transform channels of the alternative clip and the observed menu-only sequence.
 
 From `engine/`, with the previously prepared local `.ojscene` and `.actor` sidecar:
 
@@ -220,15 +220,17 @@ Keep the `.actor`, `.sheath` and `.actorlight` sidecars beside the isolated scen
 
 Prepared menu exports now derive ambient and three named light terms from original scene resources. The generated direction now follows the active camera for the placed Prince. [Runtime and final-pixel checks](docs/observations/2026-11-17-camera02-runtime-light.md) verify the calculation, its visible contribution in Vulkan and endpoint frame timings. [Receiver origins](docs/observations/2026-11-17-receiver-origins.md) now follow Spine2 for the support and Head for the face; nine other components retain the Prince root. The [sword reflection](docs/observations/2026-11-17-sword-vulkan.md) now follows animated normals and the active camera, using its original texture and tint; the other two sword groups retain their measured diffuse material. [Material selection](docs/observations/2026-11-22-sword-material-selection.md) now uses the verified last-entry bound from the original pack instead of a sword-specific material key. GOG final-pixel parity remains unresolved. See [source-light validation](docs/observations/2026-11-17-prince-source-lights.md).
 
+The [native idle-action selection investigation](docs/observations/2026-11-22-prince-idle-selection.md) identifies the controller selecting action 24 / clip `330010E9`, its observed direct restart and rate override. [Initialization and return captures](docs/observations/2026-11-23-prince-idle-init-return.md) distinguish original-resource defaults from native table filling and verify action 24 returning to action 1 with controller-selected repetition counts and rates. [Terminal-loop validation](docs/observations/2026-11-23-prince-idle-terminal.md) confirms restart at stage 3 and identifies the event-driven idle gate. [Return-blend and sender measurements](docs/observations/2026-11-23-prince-blend-activation.md) establish the 11/60-second nominal blend, fitted rotation/pelvis agreement, retained spine translation and `Menu_Start_Demo` as the captured event sender. [Clock and menu synchronization](docs/observations/2026-11-23-prince-clock-menu-sync.md) validates 101 rotation poses without phase fitting and ties suspension/reset to Camera02 entry/exit messages in a synchronized New Game capture. [Vulkan idle integration](docs/observations/2026-11-24-prince-idle-vulkan.md) now adds the second source clip, the bounded menu sequence and Camera02 completion/reset routing. The actor remains a non-playable diagnostic; complete native startup phase and general action selection are not implemented.
+
 The first diagnostic sheath cycle is prepared at load time; subsequent steps preserve controller state across body loops. Development builds optimize animation math, and CPU simulation overlaps the previous GPU submission. Bounded profiling distinguishes GPU command execution from CPU presentation waits. See the [CPU performance measurements and limits](docs/observations/2026-11-15-prince-performance.md).
 
 The prepared balcony integration additionally uses `.placement` and preserves the menu's effect sidecars:
 
 ```powershell
-cargo run -p jade-viewer -- --scene ../reports/menu-prince-mips-20261122/menu.ojscene --menu ../reports/menu-fixtures-20261110/ui/menu.ojui --color-pipeline legacy-unorm --validation
+cargo run -p jade-viewer -- --scene ../reports/menu-prince-idle-20261123/menu.ojscene --menu ../reports/menu-fixtures-20261110/ui/menu.ojui --color-pipeline legacy-unorm --validation
 ```
 
-This example requires existing local exports. Initial Z now comes from the original balcony collision triangle; checkpoint XY and orientation are preserved. The engine applies this placement to animated vertices through `.placement`. See [grounded menu integration](docs/observations/2026-11-15-prince-grounded-integration.md) for source/native comparisons, tests and frame timings. Continuous collision and player movement are not implemented.
+This example requires existing local exports, including `menu.idle` for the new sequence. `src/export_prince_idle.py <scene.actor> <scene.idle> --sources <decoded actor bundles>` generates that optional sidecar from original clip `330010E9`, verifies the source skeleton and refuses to overwrite an existing output. Older packages without `.idle` retain their previous single-clip preview. This example requires existing local exports. Initial Z now comes from the original balcony collision triangle; checkpoint XY and orientation are preserved. The engine applies this placement to animated vertices through `.placement`. See [grounded menu integration](docs/observations/2026-11-15-prince-grounded-integration.md) for source/native comparisons, tests and frame timings. Continuous collision and player movement are not implemented.
 This Windows update has not been revalidated on Linux/macOS.
 
 [Balcony pose and loop validation](docs/observations/2026-11-15-prince-balcony-validation.md) adds five repeatable endpoint-camera captures and a live frame-time baseline. The measured four-second sheath reset discontinuity is corrected by [preserving controller state across native-observed body loops](docs/observations/2026-11-15-prince-sheath-loop.md). Initial collision-based placement is validated; dynamic collision, native startup and general action selection remain unimplemented or unvalidated. See the [ground-placement measurements](docs/observations/2026-11-15-prince-ground-placement.md): the native origin is stable; the subsequent [native contact capture](docs/observations/2026-11-15-prince-native-ground.md) identifies the supporting collision triangle.
