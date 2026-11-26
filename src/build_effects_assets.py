@@ -9,6 +9,29 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 from PIL import Image
 
+def resolve_asset_path(assets, relative):
+    """Resolve historical asset paths without filesystem case assumptions."""
+    assets = assets.resolve(strict=True)
+    relative = Path(relative)
+    if relative.is_absolute() or '..' in relative.parts:
+        raise ValueError(f'Invalid asset path: {relative}')
+    current = assets
+    for part in relative.parts:
+        matches = [
+            item for item in current.iterdir()
+            if item.name.casefold() == part.casefold()
+        ]
+        if not matches:
+            raise FileNotFoundError(f'Asset not found: {current / part}')
+        if len(matches) != 1:
+            raise ValueError(f'Ambiguous asset path: {current / part}')
+        current = matches[0]
+    resolved = current.resolve(strict=True)
+    if not resolved.is_relative_to(assets):
+        raise ValueError(f'Path outside asset root: {relative}')
+    if not resolved.is_file():
+        raise ValueError(f'Asset is not a file: {resolved}')
+    return resolved
 def build(assets,out):
     assets=assets.resolve();out=out.resolve()
     if 'game' in [p.lower() for p in out.parts]:
@@ -22,7 +45,7 @@ def build(assets,out):
     out.mkdir(parents=True)
     def run(tool,*args):
         environment={k:v for k,v in os.environ.items() if k.lower()!='psmodulepath'}
-        subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(tools/tool),*map(str,args)],env=environment,check=True,stdout=subprocess.DEVNULL)
+        subprocess.run(['pwsh','-NoProfile','-File',str(tools/tool),*map(str,args)],env=environment,check=True,stdout=subprocess.DEVNULL)
     background=Image.new('RGBA',(800,600),'#181c24')
     # Resolve direct and instanced panel images, preserving MGM draw order.
     images=[]
@@ -35,7 +58,7 @@ def build(assets,out):
                 images.extend((im,x,y) for im in definition.findall('CHILDREN/IMAGE'))
     for i,(element,x,y) in enumerate(images):
         material=root.find(".//MATERIAL[NAME='"+element.findtext('MATERIAL')+"']")
-        path=assets/material.findtext('STAGE/FILE').strip('\\').replace('\\','/')
+        path=resolve_asset_path(assets, material.findtext('STAGE/FILE').strip('\\').replace('\\','/'))
         folder=out/('panel'+str(i));run('Export-DDSPreview.ps1','-Path',path,'-OutputDirectory',folder)
         f=element.find('KEYFRAMES/KEYFRAME')
         rect=[round((float(f.findtext(k))+(x if k in ('LEFT','RIGHT') else y))*1.25) for k in ('LEFT','TOP','RIGHT','BOTTOM')]
@@ -59,7 +82,7 @@ def build(assets,out):
         if not text or node is None: continue
         f=node.find('KEYFRAMES/KEYFRAME');height=float(f.findtext('HEIGHT'));scale=height/36*1.25
         folder=out/name
-        run('Export-MFTTextPreview.ps1','-Path',assets/'fonts'/(node.findtext('FONT')+'.mft'),'-OutputDirectory',folder,'-Text',text)
+        run('Export-MFTTextPreview.ps1','-Path',resolve_asset_path(assets, Path('fonts')/(node.findtext('FONT')+'.mft')),'-OutputDirectory',folder,'-Text',text)
         spec=json.loads((folder/'specimen.json').read_text(encoding='utf-8-sig'))
         with Image.open(folder/'text.png') as im: alpha=im.getchannel('A')
         box=alpha.getbbox();alpha=alpha.crop(box).resize((max(1,round((box[2]-box[0])*scale)),max(1,round((box[3]-box[1])*scale))),Image.Resampling.BILINEAR)

@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Tests classic LZO1X and POP framing, optionally against official miniLZO.
@@ -9,7 +9,7 @@
 #>
 [CmdletBinding()]
 param([string]$ReferenceDll,[string]$GameArchive)
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 $project=Split-Path $PSScriptRoot -Parent
 Import-Module (Join-Path $project 'src/OpenJade.POPLzo.psm1') -Force
@@ -150,11 +150,11 @@ if($GameArchive){
     }finally{$reader.Dispose()}
     Assert ($real.Count -eq $index.Summary.BoundedCandidates -and $real.Count -gt 0) 'All real recognized candidates decoded'
     Assert ((Get-FileHash -LiteralPath $GameArchive).Hash -ceq $archiveHash) 'Real archive unchanged'
-    $real | Export-Csv (Join-Path $run 'decoded-resources.csv') -NoTypeInformation -Encoding UTF8
+    $real | Export-Csv (Join-Path $run 'decoded-resources.csv') -NoTypeInformation -Encoding utf8NoBOM
 }
 $summary=[pscustomobject]@{Date=(Get-Date).ToString('o');PowerShell=$PSVersionTable.PSVersion.ToString();Checks=$checks.Count;Passed=$checks.ToArray()
     DifferentialCases=$differential;ReferenceDllSHA256=$(if($ReferenceDll){(Get-FileHash $ReferenceDll).Hash}else{$null})
     ArchiveSHA256=$archiveHash;RealResources=$real.Count;RealBlocks=$gameBlocks;CompressedBlocks=$compressedBlocks;VerbatimBlocks=$verbatimBlocks;ReferenceCompared=[bool]$ReferenceDll}
-$summary | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $run 'verification.json') -Encoding UTF8
+$summary | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $run 'verification.json') -Encoding utf8NoBOM
 Write-Host "PASS: $($checks.Count) checks. Results: $run"
 $summary | Select-Object Checks,DifferentialCases,RealResources,RealBlocks,CompressedBlocks,VerbatimBlocks,ReferenceCompared | Format-List

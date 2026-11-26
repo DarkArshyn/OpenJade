@@ -1,15 +1,15 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Runs synthetic BF regressions and optional local game-data comparisons.
 .PARAMETER GameArchive
     Optional BF archive to extract and check without changing the input.
 .EXAMPLE
-    .\tests\Test-BF.ps1
+    ./tests/Test-BF.ps1
 #>
 [CmdletBinding()]
 param([string]$GameArchive)
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
 Import-Module (Join-Path $project 'src/OpenJade.BF.psm1') -Force
@@ -86,7 +86,7 @@ foreach ($mutation in @(@{Offset=4;Value=[uint32]0}, @{Offset=8;Value=[uint32]::
     [IO.File]::WriteAllBytes($bad,$bytes)
     Assert-Throws { Get-OpenJadeBFArchive $bad } 'Invalid entry range is refused'
 }
-foreach ($name in @('../escape.bin','C:\escape.bin','nested/../../escape.bin','NUL','file:stream','trailing.')) {
+foreach ($name in @('../escape.bin','C:\escape.bin','C:/escape.bin','C:escape.bin','/escape.bin','\escape.bin','\\server\share\escape.bin','nested/../../escape.bin','nested\..\..\escape.bin','NUL','CON.txt','file:stream','file?.bin','file*.bin','file|name.bin','file<name.bin','file>name.bin','file"name.bin','trailing.','trailing ')) {
     New-Fixture $bad @(@{Name=$name;Data=$payload})
     $output = Join-Path $run ([guid]::NewGuid().ToString('N'))
     Assert-Throws { Export-OpenJadeBFEntry -Path $bad -All -OutputDirectory $output } "Unsafe path refused: $name"
@@ -96,6 +96,15 @@ foreach ($names in @(@('a','A'), @('a','a/b'), @('a/b','a\b'))) {
     New-Fixture $bad @(@{Name=$names[0];Data=$payload},@{Name=$names[1];Data=$payload})
     Assert-Throws { Export-OpenJadeBFEntry -Path $bad -All -OutputDirectory (Join-Path $run 'collision') } 'Name collision refused'
 }
+# Verify that Windows-style archive separators work on every host.
+New-Fixture $bad @(@{Name='nested\data.bin'; Data=$payload})
+$backslashRoot = Join-Path $run 'backslash'
+$backslashResult = @(Export-OpenJadeBFEntry -Path $bad -All -OutputDirectory $backslashRoot)
+$expectedPath = Join-Path $backslashRoot 'nested/data.bin'
+Assert ($backslashResult.Count -eq 1) 'Backslash entry extraction count'
+Assert (Test-Path -LiteralPath $expectedPath -PathType Leaf) 'Backslash separator is normalized'
+Assert ([Convert]::ToBase64String([IO.File]::ReadAllBytes($expectedPath)) -eq [Convert]::ToBase64String($payload)) 'Backslash entry preserves exact binary data'
+
 [IO.File]::WriteAllBytes($bad,[byte[]](0,0,0,0))
 Assert (@((Get-OpenJadeBFArchive $bad).Entries).Count -eq 0) 'Empty index is supported'
 $wrapperEntries = @(& (Join-Path $project 'tools/Read-BF.ps1') -Path $fixture)
@@ -132,11 +141,11 @@ if ($GameArchive) {
     }
     finally { $source.Dispose(); $sha.Dispose() }
     $realResult = [pscustomobject]@{ Path=$real.Path; SHA256=$before; Entries=$real.Entries.Count; SourceRangeMatches=$extracted.Count }
-    $real.Entries | Export-Csv -LiteralPath (Join-Path $run 'index.csv') -NoTypeInformation -Encoding UTF8
-    $extracted | Export-Csv -LiteralPath (Join-Path $run 'extraction.csv') -NoTypeInformation -Encoding UTF8
+    $real.Entries | Export-Csv -LiteralPath (Join-Path $run 'index.csv') -NoTypeInformation -Encoding utf8NoBOM
+    $extracted | Export-Csv -LiteralPath (Join-Path $run 'extraction.csv') -NoTypeInformation -Encoding utf8NoBOM
 }
 [pscustomobject]@{ Date=(Get-Date).ToString('o'); PowerShell=$PSVersionTable.PSVersion.ToString()
     Checks=$checks.Count; Passed=$checks.ToArray(); RealArchive=$realResult } |
-    ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $run 'verification.json') -Encoding UTF8
+    ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $run 'verification.json') -Encoding utf8NoBOM
 Write-Host "PASS: $($checks.Count) checks. Results: $run"
 if ($realResult) { $realResult | Format-List }

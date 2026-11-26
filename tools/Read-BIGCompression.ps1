@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Reports candidate block envelopes without decompressing or modifying data.
@@ -9,12 +9,14 @@
 #>
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Path,[string]$OutputDirectory)
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot '../src/OpenJade.BIGCompression.psm1')
 if($OutputDirectory){
-    $root=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
-    $game=Join-Path (Split-Path $PSScriptRoot -Parent) 'game'
-    if($root.Equals($game,[StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($game+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'The game directory is read-only.'}
+    $separator = [IO.Path]::DirectorySeparatorChar
+    $root = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)))
+    $game = [IO.Path]::GetFullPath((Join-Path (Split-Path $PSScriptRoot -Parent) 'game'))
+    if ($root.Equals($game, [StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($game + $separator, [StringComparison]::OrdinalIgnoreCase)) { throw 'The game directory is read-only.' }
     if(Test-Path -LiteralPath $root){throw 'Output directory already exists.'}
     $ancestor=$root
     while($ancestor){
@@ -25,8 +27,8 @@ if($OutputDirectory){
 $result=Get-OpenJadeBIGCompression -Path $Path
 if($OutputDirectory){
     [void][IO.Directory]::CreateDirectory($root)
-    $result.Summary | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'summary.json') -Encoding UTF8
-    $result.Entries | Export-Csv -LiteralPath (Join-Path $root 'entries.csv') -NoTypeInformation -Encoding UTF8
-    $result.Blocks | Export-Csv -LiteralPath (Join-Path $root 'blocks.csv') -NoTypeInformation -Encoding UTF8
+    $result.Summary | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'summary.json') -Encoding utf8NoBOM
+    $result.Entries | Export-Csv -LiteralPath (Join-Path $root 'entries.csv') -NoTypeInformation -Encoding utf8NoBOM
+    $result.Blocks | Export-Csv -LiteralPath (Join-Path $root 'blocks.csv') -NoTypeInformation -Encoding utf8NoBOM
 }
 $result

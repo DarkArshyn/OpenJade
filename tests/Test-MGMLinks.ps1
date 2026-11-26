@@ -1,15 +1,15 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Tests local MGM name resolution, resource candidates and reports.
 .PARAMETER MenuDirectory
     Optional extracted menu directory containing MGM, texture and fonts files.
 .EXAMPLE
-    .\tests\Test-MGMLinks.ps1
+    ./tests/Test-MGMLinks.ps1
 #>
 [CmdletBinding()]
 param([string]$MenuDirectory)
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 $project=Split-Path $PSScriptRoot -Parent
 Import-Module (Join-Path $project 'src/OpenJade.MGMLinks.psm1')
@@ -108,6 +108,6 @@ if ($MenuDirectory) {
     Assert $unchanged 'All input MGM, textures and font files remain unchanged'
 }
 [pscustomobject]@{Date=(Get-Date).ToString('o');PowerShell=$PSVersionTable.PSVersion.ToString();Checks=$checks.Count;Passed=$checks.ToArray();RealFiles=$realResults} |
-    ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $run 'verification.json') -Encoding UTF8
+    ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $run 'verification.json') -Encoding utf8NoBOM
 Write-Host "PASS: $($checks.Count) checks. Results: $run"
 $realResults | Format-Table FileName,MaterialReferences,FontReferences,TextureDeclarations,FontDeclarations,ResolvedNames,AttentionCount

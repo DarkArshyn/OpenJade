@@ -1,5 +1,5 @@
-#requires -Version 5.1
-Set-StrictMode -Version Latest
+#requires -Version 7.6
+Set-StrictMode -Version 3.0
 Import-Module (Join-Path $PSScriptRoot 'OpenJade.MGM.psm1')
 
 function Get-MGMLinkInventory {
@@ -14,8 +14,11 @@ function Get-MGMLinkInventory {
                 $skipped.Add($item.FullName)
             } elseif ($item.PSIsContainer) { $directories.Push($item.FullName) }
             else {
-                $files.Add([pscustomobject]@{ RelativePath=$item.FullName.Substring($Root.TrimEnd('\').Length+1).Replace('\','/')
-                    FullPath=$item.FullName; Length=$item.Length })
+                $files.Add([pscustomobject]@{
+                    RelativePath = [IO.Path]::GetRelativePath($Root, $item.FullName).Replace([IO.Path]::DirectorySeparatorChar, [char]'/')
+                    FullPath = $item.FullName
+                    Length = $item.Length
+                })
             }
         }
     }
@@ -34,6 +37,7 @@ function Get-MGMFileMatch {
         if ([string]::IsNullOrWhiteSpace($part) -or $part -eq '.' -or $part -eq '..' -or
             $part.EndsWith('.') -or $part.EndsWith(' ') -or
             $part.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0 -or
+            $part -match '[<>:"/\\|?*\x00-\x1F]' -or
             $part -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)') {
             return [pscustomobject]@{Status='UnsafePath'; Candidates=@(); Evidence='Unsafe or empty resource path component.'}
         }
@@ -58,7 +62,7 @@ function Get-OpenJadeMGMLinks {
     .PARAMETER AssetRoot
         Extracted menu resource directory containing texture and fonts folders.
     .EXAMPLE
-        Get-OpenJadeMGMLinks -Path .\reports\data\menu\pop4common.mgm -AssetRoot .\reports\data\menu
+        Get-OpenJadeMGMLinks -Path ./reports/data/menu/pop4common.mgm -AssetRoot ./reports/data/menu
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$AssetRoot)
@@ -193,8 +197,8 @@ function Export-OpenJadeMGMLinks {
     )
     foreach ($table in $tables) {
         $path=Join-Path $root ($table.Name+'.csv')
-        if ($table.Rows.Count) { $table.Rows | Select-Object $table.Columns | Export-Csv -LiteralPath $path -NoTypeInformation -Encoding UTF8 }
-        else { [IO.File]::WriteAllText($path,('"'+($table.Columns -join '","')+'"'+"`r`n"),$utf8) }
+        if ($table.Rows.Count) { $table.Rows | Select-Object $table.Columns | Export-Csv -LiteralPath $path -NoTypeInformation -Encoding utf8NoBOM }
+        else { [IO.File]::WriteAllText($path,('"'+($table.Columns -join '","')+'"'+[Environment]::NewLine),$utf8) }
     }
     [IO.File]::WriteAllText((Join-Path $root 'links-summary.json'),($Analysis.Summary | ConvertTo-Json),$utf8)
     [IO.File]::WriteAllText((Join-Path $root 'skipped-paths.json'),(ConvertTo-Json -InputObject @($Analysis.SkippedPaths)),$utf8)

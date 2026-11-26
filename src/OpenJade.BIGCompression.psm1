@@ -1,5 +1,5 @@
-#requires -Version 5.1
-Set-StrictMode -Version Latest
+#requires -Version 7.6
+Set-StrictMode -Version 3.0
 Import-Module (Join-Path $PSScriptRoot 'OpenJade.BIG.psm1')
 
 function Get-OpenJadeBlockEnvelope {

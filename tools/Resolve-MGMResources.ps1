@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Links menu elements to local material/font declarations and resource files.
@@ -9,11 +9,12 @@
 .PARAMETER OutputDirectory
     Optional new directory for readable and CSV reports.
 .EXAMPLE
-    $links = .\tools\Resolve-MGMResources.ps1 -Path .\reports\data\menu\pop4common.mgm -AssetRoot .\reports\data\menu -OutputDirectory .\reports\common-links
+    $links = ./tools/Resolve-MGMResources.ps1 -Path ./reports/data/menu/pop4common.mgm -AssetRoot ./reports/data/menu -OutputDirectory ./reports/common-links
     $links.Summary
 #>
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$AssetRoot,[string]$OutputDirectory)
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot '../src/OpenJade.MGMLinks.psm1')
 $analysis=Get-OpenJadeMGMLinks -Path $Path -AssetRoot $AssetRoot

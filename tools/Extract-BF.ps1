@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Extracts BF entries to a new directory and returns SHA-256 hashes.
@@ -11,7 +11,7 @@
 .PARAMETER OutputDirectory
     New directory for extracted files; existing directories are refused.
 .EXAMPLE
-    .\tools\Extract-BF.ps1 -Path .\game\TSoT-GOG\POPData.BF -Entry gamepads.dat -OutputDirectory .\reports\gamepads
+    ./tools/Extract-BF.ps1 -Path ./game/TSoT-GOG/POPData.BF -Entry gamepads.dat -OutputDirectory ./reports/gamepads
 #>
 [CmdletBinding(DefaultParameterSetName='Single')]
 param(
@@ -20,6 +20,7 @@ param(
     [Parameter(Mandatory,ParameterSetName='All')][switch]$All,
     [Parameter(Mandatory)][string]$OutputDirectory
 )
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '../src/OpenJade.BF.psm1') -Force
 Export-OpenJadeBFEntry @PSBoundParameters

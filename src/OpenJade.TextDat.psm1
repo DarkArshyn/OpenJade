@@ -1,5 +1,5 @@
-#requires -Version 5.1
-Set-StrictMode -Version Latest
+#requires -Version 7.6
+Set-StrictMode -Version 3.0
 
 function Convert-OpenJadeTextDat {
     <#
@@ -15,15 +15,15 @@ function Convert-OpenJadeTextDat {
     .PARAMETER Output
         New output filename. Existing files and game-directory writes are refused.
     .EXAMPLE
-        Convert-OpenJadeTextDat -Path .\reports\pop4pclocal.dat -Output .\reports\pop4pclocal.ini
+        Convert-OpenJadeTextDat -Path ./reports/pop4pclocal.dat -Output ./reports/pop4pclocal.ini
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Output)
     $source = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
-    $destination = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Output)
-    $game = Join-Path (Split-Path $PSScriptRoot -Parent) 'game'
-    if ($destination.Equals($game,[StringComparison]::OrdinalIgnoreCase) -or
-        $destination.StartsWith($game + '\',[StringComparison]::OrdinalIgnoreCase)) { throw 'The game directory is read-only.' }
+    $separator = [IO.Path]::DirectorySeparatorChar
+    $destination = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Output))
+    $game = [IO.Path]::GetFullPath((Join-Path (Split-Path $PSScriptRoot -Parent) 'game'))
+    if ($destination.Equals($game, [StringComparison]::OrdinalIgnoreCase) -or $destination.StartsWith($game + $separator, [StringComparison]::OrdinalIgnoreCase)) { throw 'The game directory is read-only.' }
     if (Test-Path -LiteralPath $destination) { throw "Output already exists: $destination" }
     # Reject output ancestors that redirect writes, including junctions.
     $ancestor = [IO.Path]::GetDirectoryName($destination)

@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Tests structural compression hypotheses, not codec correctness.
@@ -7,7 +7,7 @@
 #>
 [CmdletBinding()]
 param([string]$GameArchive)
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 $project=Split-Path $PSScriptRoot -Parent
 Import-Module (Join-Path $project 'src/OpenJade.BIGCompression.psm1') -Force
@@ -70,6 +70,6 @@ if($GameArchive){
     Refuses {& (Join-Path $project 'tools/Read-BIGCompression.ps1') $GameArchive (Join-Path $project 'game/forbidden')} 'Game output refused'
     Assert ((Get-FileHash -LiteralPath $GameArchive).Hash -ceq $before -and $real.Summary.ArchiveSHA256 -ceq $before) 'Real archive unchanged'
 }
-[pscustomobject]@{Date=(Get-Date).ToString('o');PowerShell=$PSVersionTable.PSVersion.ToString();Checks=$checks.Count;Passed=$checks.ToArray();Summary=$(if($real){$real.Summary}else{$null})} | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $run 'verification.json') -Encoding UTF8
+[pscustomobject]@{Date=(Get-Date).ToString('o');PowerShell=$PSVersionTable.PSVersion.ToString();Checks=$checks.Count;Passed=$checks.ToArray();Summary=$(if($real){$real.Summary}else{$null})} | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $run 'verification.json') -Encoding utf8NoBOM
 Write-Host "PASS: $($checks.Count) checks. Results: $run"
 if($real){$real.Summary | Format-List}

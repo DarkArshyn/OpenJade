@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Extracts a single stored BIG v37 payload by ID and writes its verification manifest.
@@ -12,10 +12,11 @@
 .PARAMETER OutputDirectory
     New directory for the extracted payload and extraction.json.
 .EXAMPLE
-    .\tools\Extract-BIG.ps1 -Path .\game\TSoT-GOG\prince.bf -Id '0x03090337' -OutputDirectory .\reports\versiontag
+    ./tools/Extract-BIG.ps1 -Path ./game/TSoT-GOG/prince.bf -Id '0x03090337' -OutputDirectory ./reports/versiontag
 #>
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$Id,[Parameter(Mandatory)][string]$OutputDirectory)
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot '../src/OpenJade.BIG.psm1')
 Export-OpenJadeBIGEntry @PSBoundParameters

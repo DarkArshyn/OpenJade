@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Verifies stored BIG extraction using synthetic bytes and optional PC GOG data.
@@ -7,7 +7,7 @@
 #>
 [CmdletBinding()]
 param([string]$GameArchive)
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 $project=Split-Path $PSScriptRoot -Parent
 Import-Module (Join-Path $project 'src/OpenJade.BIG.psm1') -Force
@@ -78,5 +78,5 @@ if($GameArchive) {
     }
     Assert ((Get-FileHash -LiteralPath $GameArchive).Hash -ceq $before) 'Real archive unchanged'
 }
-[pscustomobject]@{Date=(Get-Date).ToString('o');PowerShell=$PSVersionTable.PSVersion.ToString();Checks=$checks.Count;Passed=$checks.ToArray();RealExtractions=$real} | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $run 'verification.json') -Encoding UTF8
+[pscustomobject]@{Date=(Get-Date).ToString('o');PowerShell=$PSVersionTable.PSVersion.ToString();Checks=$checks.Count;Passed=$checks.ToArray();RealExtractions=$real} | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $run 'verification.json') -Encoding utf8NoBOM
 Write-Host "PASS: $($checks.Count) checks. Results: $run"

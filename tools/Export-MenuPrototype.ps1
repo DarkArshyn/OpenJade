@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <# .SYNOPSIS
 Creates a static 800x600 logo/text prototype and a bounded style comparison.
 .DESCRIPTION
@@ -8,6 +8,7 @@ The unmodified bilinear model remains the main prototype; fitted style is separa
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$AssetRoot,[Parameter(Mandatory)][string]$ReferenceImage,
       [Parameter(Mandatory)][string]$OutputDirectory,[Parameter(Mandatory)][string]$PythonPath)
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 & (Join-Path $PSScriptRoot 'Compare-MFTMenu.ps1') -AssetRoot $AssetRoot -ReferenceImage $ReferenceImage -OutputDirectory $OutputDirectory -PythonPath $PythonPath
 $root=(Resolve-Path -LiteralPath $OutputDirectory).ProviderPath
@@ -20,7 +21,7 @@ $logo=$doc.SelectSingleNode('//PAGE[NAME="P_MainMenu"]/CHILDREN/IMAGE[NAME="Logo
 if($logo.MATERIAL -ne 'POP'){throw 'Unsupported logo material.'}
 $frame=$logo.SelectSingleNode('KEYFRAMES/KEYFRAME[IDX="0"]')
 [pscustomobject]@{Left=[int]$frame.LEFT;Top=[int]$frame.TOP;Right=[int]$frame.RIGHT;Bottom=[int]$frame.BOTTOM} |
-    ConvertTo-Json | Set-Content (Join-Path $root 'logo-geometry.json') -Encoding UTF8
+    ConvertTo-Json | Set-Content (Join-Path $root 'logo-geometry.json') -Encoding utf8NoBOM
 & $PythonPath (Join-Path $PSScriptRoot '../src/menu_style_experiment.py') $root
 if($LASTEXITCODE -ne 0){throw 'Style experiment failed.'}
 Write-Host "Static prototype: $root"

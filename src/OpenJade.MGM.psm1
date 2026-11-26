@@ -1,5 +1,5 @@
-﻿#requires -Version 5.1
-Set-StrictMode -Version Latest
+﻿#requires -Version 7.6
+Set-StrictMode -Version 3.0
 
 class MaterialRecord {
     [int]$Index
@@ -143,7 +143,7 @@ function Get-OpenJadeMGM {
     .PARAMETER Path
         Input MGM file. Relative paths use the current working directory.
     .EXAMPLE
-        $document = Get-OpenJadeMGM -Path .\reports\menu\pop4common.mgm
+        $document = Get-OpenJadeMGM -Path ./reports/menu/pop4common.mgm
         $document.Materials | Format-Table Type, Name, Offset
     #>
     [CmdletBinding()]
@@ -255,17 +255,16 @@ function Export-OpenJadeMGMReport {
     .PARAMETER OutputDirectory
         New report directory. Existing roots and the game directory are refused.
     .EXAMPLE
-        Get-OpenJadeMGM .\reports\menu\pop4common.mgm |
-            Export-OpenJadeMGMReport -OutputDirectory .\reports\common-analysis
+        Get-OpenJadeMGM ./reports/menu/pop4common.mgm | Export-OpenJadeMGMReport -OutputDirectory ./reports/common-analysis
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory,ValueFromPipeline)][psobject]$Document,
         [Parameter(Mandatory)][string]$OutputDirectory)
     process {
-        $root=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
-        $game=Join-Path (Split-Path $PSScriptRoot -Parent) 'game'
-        if ($root.Equals($game,[StringComparison]::OrdinalIgnoreCase) -or
-            $root.StartsWith($game+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'The game directory is read-only.' }
+        $separator = [IO.Path]::DirectorySeparatorChar
+        $root = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)))
+        $game = [IO.Path]::GetFullPath((Join-Path (Split-Path $PSScriptRoot -Parent) 'game'))
+        if ($root.Equals($game, [StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($game + $separator, [StringComparison]::OrdinalIgnoreCase)) { throw 'The game directory is read-only.' }
         if (Test-Path -LiteralPath $root) { throw "Report directory already exists: $root" }
         $ancestor=$root
         while ($ancestor) {
@@ -287,8 +286,8 @@ function Export-OpenJadeMGMReport {
         )
         foreach ($table in $tables) {
             $path=Join-Path $root ($table.Name+'.csv')
-            if ($table.Rows.Count) { $table.Rows | Select-Object $table.Columns | Export-Csv -LiteralPath $path -NoTypeInformation -Encoding UTF8 }
-            else { [IO.File]::WriteAllText($path,('"'+($table.Columns -join '","')+'"'+"`r`n"),$utf8) }
+            if ($table.Rows.Count) { $table.Rows | Select-Object $table.Columns | Export-Csv -LiteralPath $path -NoTypeInformation -Encoding utf8NoBOM }
+            else { [IO.File]::WriteAllText($path,('"'+($table.Columns -join '","')+'"'+[Environment]::NewLine),$utf8) }
         }
         $writer=New-Object IO.StreamWriter((Join-Path $root 'structure.txt'),$false,$utf8)
         try {

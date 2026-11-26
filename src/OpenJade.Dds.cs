@@ -2,9 +2,8 @@
 // Format references: Microsoft DDS_HEADER, DDS_PIXELFORMAT and Block Compression.
 using System;
 using System.IO;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
+using System.IO.Compression;
+using System.Text;
 
 namespace OpenJade {
     public sealed class DdsImage {
@@ -72,26 +71,104 @@ namespace OpenJade {
             }
             return image;
         }
-        public static void SavePng(DdsImage image, string path, bool checkerboard) {
-            using(Bitmap bitmap=new Bitmap(image.Width,image.Height,PixelFormat.Format32bppArgb)) {
-                BitmapData data=bitmap.LockBits(new Rectangle(0,0,image.Width,image.Height),ImageLockMode.WriteOnly,PixelFormat.Format32bppArgb);
-                try {
-                    byte[] row=new byte[image.Width*4];
+        private static void WriteUInt32BE(Stream stream, uint value) {
+            stream.WriteByte((byte)(value >> 24));
+            stream.WriteByte((byte)(value >> 16));
+            stream.WriteByte((byte)(value >> 8));
+            stream.WriteByte((byte)value);
+        }
+        private static uint UpdateCrc32(uint crc, byte[] data) {
+            foreach(byte value in data) {
+                crc ^= value;
+                for(int bit=0;bit<8;bit++) {
+                    crc=(crc&1)!=0
+                        ? (crc>>1)^0xEDB88320u
+                        : crc>>1;
+                }
+            }
+            return crc;
+        }
+        private static void WritePngChunk(
+            Stream stream, string type, byte[] data) {
+
+            byte[] name=Encoding.ASCII.GetBytes(type);
+
+            WriteUInt32BE(stream,(uint)data.Length);
+            stream.Write(name,0,name.Length);
+            stream.Write(data,0,data.Length);
+
+            uint crc=UpdateCrc32(0xFFFFFFFFu,name);
+            crc=UpdateCrc32(crc,data)^0xFFFFFFFFu;
+
+            WriteUInt32BE(stream,crc);
+        }
+        public static void SavePng(
+            DdsImage image, string path, bool checkerboard) {
+
+            byte[] compressed;
+
+            using(MemoryStream buffer=new MemoryStream()) {
+                using(ZLibStream zlib=new ZLibStream(
+                    buffer,CompressionLevel.Optimal,true)) {
+
+                    // PNG filter type 0 followed by RGBA pixels.
+                    byte[] row=new byte[checked(1+image.Width*4)];
+
                     for(int y=0;y<image.Height;y++) {
+                        row[0]=0;
+
                         for(int x=0;x<image.Width;x++) {
-                            int source=(y*image.Width+x)*4, dest=x*4, a=image.Rgba[source+3];
-                            int background=((x/16+y/16)%2==0)?48:72;
+                            int source=(y*image.Width+x)*4;
+                            int dest=1+x*4;
+                            int a=image.Rgba[source+3];
+
+                            int background=
+                                ((x/16+y/16)%2==0)?48:72;
+
                             for(int ch=0;ch<3;ch++) {
                                 int value=image.Rgba[source+ch];
-                                row[dest+2-ch]=(byte)(checkerboard?(value*a+background*(255-a)+127)/255:value);
+
+                                row[dest+ch]=(byte)(checkerboard
+                                    ? (value*a+background*(255-a)+127)/255
+                                    : value);
                             }
+
                             row[dest+3]=(byte)(checkerboard?255:a);
                         }
-                        Marshal.Copy(row,0,IntPtr.Add(data.Scan0,y*data.Stride),row.Length);
+
+                        zlib.Write(row,0,row.Length);
                     }
-                } finally {bitmap.UnlockBits(data);}
-                using(FileStream output=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.None))
-                    bitmap.Save(output,ImageFormat.Png);
+                }
+
+                compressed=buffer.ToArray();
+            }
+
+            using(FileStream output=new FileStream(
+                path,FileMode.CreateNew,
+                FileAccess.Write,FileShare.None)) {
+
+                // Standard PNG signature.
+                byte[] signature={
+                    137,80,78,71,13,10,26,10
+                };
+
+                output.Write(signature,0,signature.Length);
+
+                using(MemoryStream header=new MemoryStream()) {
+                    WriteUInt32BE(header,(uint)image.Width);
+                    WriteUInt32BE(header,(uint)image.Height);
+
+                    header.WriteByte(8); // Bit depth.
+                    header.WriteByte(6); // RGBA color type.
+                    header.WriteByte(0); // Compression method.
+                    header.WriteByte(0); // Filter method.
+                    header.WriteByte(0); // No interlacing.
+
+                    WritePngChunk(output,"IHDR",header.ToArray());
+                }
+
+                WritePngChunk(output,"IDAT",compressed);
+                WritePngChunk(output,"IEND",Array.Empty<byte>());
             }
         }
     }

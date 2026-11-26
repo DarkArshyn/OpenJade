@@ -1,15 +1,15 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Checks text DAT/INI byte preservation and input/output validation.
 .PARAMETER TextDat
     Optional local Windows-1252 text DAT to round-trip without modifying it.
 .EXAMPLE
-    .\tests\Test-TextDat.ps1
+    ./tests/Test-TextDat.ps1
 #>
 [CmdletBinding()]
 param([string]$TextDat)
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
 $run = Join-Path $project ('reports/textdat-' + [guid]::NewGuid().ToString('N'))
@@ -64,6 +64,6 @@ if ($TextDat) {
 }
 [pscustomobject]@{ Date=(Get-Date).ToString('o'); PowerShell=$PSVersionTable.PSVersion.ToString()
     Checks=$checks.Count; Passed=$checks.ToArray(); RealTextDat=$real } |
-    ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $run 'verification.json') -Encoding UTF8
+    ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $run 'verification.json') -Encoding utf8NoBOM
 Write-Host "PASS: $($checks.Count) checks. Results: $run"
 if ($real) { $real | Format-List }

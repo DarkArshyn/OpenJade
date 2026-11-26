@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Decodes a legacy DXT1/DXT5 DDS into a transparent PNG and checkerboard preview.
@@ -8,11 +8,13 @@
 #>
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$OutputDirectory)
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
-if(-not ('OpenJade.Dds' -as [type])){Add-Type -Path (Join-Path $PSScriptRoot '../src/OpenJade.Dds.cs') -ReferencedAssemblies System.Drawing}
-$root=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
-$game=Join-Path (Split-Path $PSScriptRoot -Parent) 'game'
-if($root.Equals($game,[StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($game+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'The game directory is read-only.'}
+if(-not ('OpenJade.Dds' -as [type])){Add-Type -Path (Join-Path $PSScriptRoot '../src/OpenJade.Dds.cs')}
+$separator = [IO.Path]::DirectorySeparatorChar
+$root = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)))
+$game = [IO.Path]::GetFullPath((Join-Path (Split-Path $PSScriptRoot -Parent) 'game'))
+if ($root.Equals($game, [StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($game + $separator, [StringComparison]::OrdinalIgnoreCase)) { throw 'The game directory is read-only.' }
 if(Test-Path -LiteralPath $root){throw 'Output directory already exists.'}
 $ancestor=$root
 while($ancestor){

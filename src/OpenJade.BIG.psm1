@@ -1,5 +1,5 @@
-#requires -Version 5.1
-Set-StrictMode -Version Latest
+#requires -Version 7.6
+Set-StrictMode -Version 3.0
 
 function Get-OpenJadeBIGIndex {
     <#
@@ -131,9 +131,10 @@ function Export-OpenJadeBIGReport {
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][psobject]$Archive,[Parameter(Mandatory)][string]$OutputDirectory)
-    $root=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
-    $game=Join-Path (Split-Path $PSScriptRoot -Parent) 'game'
-    if ($root.Equals($game,[StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($game+'\',[StringComparison]::OrdinalIgnoreCase)) {throw 'The game directory is read-only.'}
+    $separator = [IO.Path]::DirectorySeparatorChar
+    $root = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)))
+    $game = [IO.Path]::GetFullPath((Join-Path (Split-Path $PSScriptRoot -Parent) 'game'))
+    if ($root.Equals($game, [StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($game + $separator, [StringComparison]::OrdinalIgnoreCase)) { throw 'The game directory is read-only.' }
     if(Test-Path -LiteralPath $root) {throw 'Report directory already exists.'}
     $ancestor=$root
     while($ancestor) {
@@ -147,9 +148,9 @@ function Export-OpenJadeBIGReport {
     [IO.File]::WriteAllText((Join-Path $root 'summary.json'),($Archive.Summary | ConvertTo-Json),$utf8)
     [IO.File]::WriteAllText((Join-Path $root 'diagnostics.json'),(ConvertTo-Json -InputObject @($Archive.Diagnostics)),$utf8)
     [IO.File]::WriteAllText((Join-Path $root 'header-hex.txt'),$Archive.HeaderHex,$utf8)
-    $Archive.HeaderFields | Export-Csv -LiteralPath (Join-Path $root 'header-fields.csv') -NoTypeInformation -Encoding UTF8
-    if ($Archive.Entries.Count) { $Archive.Entries | Export-Csv -LiteralPath (Join-Path $root 'index.csv') -NoTypeInformation -Encoding UTF8 }
-    else { [IO.File]::WriteAllText((Join-Path $root 'index.csv'),'"Index","IndexOffset","Id","IdHex","BlockOffset","PayloadOffset","StoredLength","EndOffset","BoundsValid","MetadataOffset","Name","NameStatus","NameRawHex","MetadataSizeRaw","MetadataSizeLow31","MetadataSizeHighBit","LengthMatches","RecordUInt32At4","RecordUInt32At8","RecordUInt32At12","RecordUInt32At16"'+"`r`n",$utf8) }
+    $Archive.HeaderFields | Export-Csv -LiteralPath (Join-Path $root 'header-fields.csv') -NoTypeInformation -Encoding utf8NoBOM
+    if ($Archive.Entries.Count) { $Archive.Entries | Export-Csv -LiteralPath (Join-Path $root 'index.csv') -NoTypeInformation -Encoding utf8NoBOM }
+    else { [IO.File]::WriteAllText((Join-Path $root 'index.csv'),'"Index","IndexOffset","Id","IdHex","BlockOffset","PayloadOffset","StoredLength","EndOffset","BoundsValid","MetadataOffset","Name","NameStatus","NameRawHex","MetadataSizeRaw","MetadataSizeLow31","MetadataSizeHighBit","LengthMatches","RecordUInt32At4","RecordUInt32At8","RecordUInt32At12","RecordUInt32At16"'+[Environment]::NewLine,$utf8) }
     [pscustomobject]@{OutputDirectory=$root;IndexPath=(Join-Path $root 'index.csv')}
 }
 
@@ -171,7 +172,7 @@ function Export-OpenJadeBIGEntry {
     .PARAMETER OutputDirectory
         New directory for the stored payload and extraction.json manifest.
     .EXAMPLE
-        Export-OpenJadeBIGEntry -Path .\game\TSoT-GOG\prince.bf -Id '0x03090337' -OutputDirectory .\reports\versiontag
+        Export-OpenJadeBIGEntry -Path ./game/TSoT-GOG/prince.bf -Id '0x03090337' -OutputDirectory ./reports/versiontag
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$Id,
@@ -182,9 +183,10 @@ function Export-OpenJadeBIGEntry {
     } elseif ($Id -cmatch '^[0-9]+$') {
         if (-not [uint32]::TryParse($Id,[ref]$numericId)) { throw 'ID is outside the UInt32 range.' }
     } else { throw 'Use an unsigned decimal ID or a quoted hexadecimal ID (0x00000000 through 0xFFFFFFFF).' }
-    $root=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
-    $game=Join-Path (Split-Path $PSScriptRoot -Parent) 'game'
-    if ($root.Equals($game,[StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($game+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'The game directory is read-only.' }
+    $separator = [IO.Path]::DirectorySeparatorChar
+    $root = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)))
+    $game = [IO.Path]::GetFullPath((Join-Path (Split-Path $PSScriptRoot -Parent) 'game'))
+    if ($root.Equals($game, [StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($game + $separator, [StringComparison]::OrdinalIgnoreCase)) { throw 'The game directory is read-only.' }
     if (Test-Path -LiteralPath $root) { throw 'Output directory already exists.' }
     $ancestor=$root
     while ($ancestor) {
@@ -194,8 +196,8 @@ function Export-OpenJadeBIGEntry {
         $ancestor=[IO.Path]::GetDirectoryName($ancestor)
     }
     $resolved=(Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
-    # Keep a read-only handle open across indexing, hashing and copying. On the
-    # Windows baseline this prevents concurrent write/delete access to the file.
+    # Keep a read-only handle open across indexing, hashing and copying.
+    # File sharing and locking guarantees depend on the host operating system.
     $source=[IO.File]::Open($resolved,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
     try {
         $archive=Get-OpenJadeBIGIndex -Path $resolved

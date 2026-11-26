@@ -1,5 +1,5 @@
-#requires -Version 5.1
-Set-StrictMode -Version Latest
+#requires -Version 7.6
+Set-StrictMode -Version 3.0
 
 function Read-OpenJadeBFIndex {
     param([System.IO.BinaryReader]$Reader)
@@ -51,7 +51,7 @@ function Get-OpenJadeBFArchive {
     .PARAMETER Path
         Path to the BF archive. Relative paths use the current directory.
     .EXAMPLE
-        Get-OpenJadeBFArchive -Path .\game\TSoT-GOG\POPData.BF
+        Get-OpenJadeBFArchive -Path ./game/TSoT-GOG/POPData.BF
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path)
@@ -68,19 +68,28 @@ function Get-OpenJadeBFArchive {
 
 function Get-OpenJadeSafeDestination {
     param([string]$Root, [string]$Name)
-    if ([IO.Path]::IsPathRooted($Name)) { throw "Rooted archive path: $Name" }
+    if ([IO.Path]::IsPathRooted($Name) -or $Name -match '^(?:[\\/]|[A-Za-z]:)') {
+        throw "Rooted archive path: $Name"
+    }
     $parts = $Name -split '[\\/]'
     foreach ($part in $parts) {
-        if ([string]::IsNullOrWhiteSpace($part) -or $part -eq '.' -or $part -eq '..' -or
-            $part.EndsWith('.') -or $part.EndsWith(' ') -or
+        if ([string]::IsNullOrWhiteSpace($part) -or
+            $part -eq '.' -or
+            $part -eq '..' -or
+            $part.EndsWith('.') -or
+            $part.EndsWith(' ') -or
             $part.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0 -or
+            $part -match '[<>:"/\\|?*\x00-\x1F]' -or
             $part -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)') {
             throw "Unsafe archive path: $Name"
         }
     }
-    $destination = [IO.Path]::GetFullPath((Join-Path $Root ($parts -join '\')))
-    $prefix = $Root.TrimEnd('\') + '\'
-    if (-not $destination.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { throw 'Output escapes its root.' }
+    $separator = [IO.Path]::DirectorySeparatorChar
+    $relativePath = $parts -join $separator
+    $destination = [IO.Path]::GetFullPath([IO.Path]::Combine($Root, $relativePath))
+    $prefix = [IO.Path]::TrimEndingDirectorySeparator($Root)
+    if (-not $prefix.EndsWith([string]$separator)) { $prefix += $separator }
+    if (-not $destination.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Output escapes its root.' }
     # Existing junctions and symbolic links must not redirect writes.
     $current = $destination
     while ($current) {
@@ -110,7 +119,7 @@ function Export-OpenJadeBFEntry {
     .PARAMETER OutputDirectory
         New destination directory. Existing directories are never overwritten.
     .EXAMPLE
-        Export-OpenJadeBFEntry -Path .\game\TSoT-GOG\POPData.BF -Entry gamepads.dat -OutputDirectory .\reports\gamepads
+        Export-OpenJadeBFEntry -Path ./game/TSoT-GOG/POPData.BF -Entry gamepads.dat -OutputDirectory ./reports/gamepads
     #>
     [CmdletBinding(DefaultParameterSetName='Single')]
     param(
@@ -121,11 +130,12 @@ function Export-OpenJadeBFEntry {
     )
     $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
     $root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
+    $separator = [IO.Path]::DirectorySeparatorChar
+    $root = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($root))
     $projectRoot = Split-Path $PSScriptRoot -Parent
     foreach ($folder in @('game')) {
-        $protected = Join-Path $projectRoot $folder
-        if ($root.Equals($protected,[StringComparison]::OrdinalIgnoreCase) -or
-            $root.StartsWith($protected + '\',[StringComparison]::OrdinalIgnoreCase)) { throw "Protected reference directory: $root" }
+        $protected = [IO.Path]::GetFullPath((Join-Path $projectRoot $folder))
+        if ($root.Equals($protected, [StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($protected + $separator, [StringComparison]::OrdinalIgnoreCase)) {  throw "Protected reference directory: $root" }
     }
     if (Test-Path -LiteralPath $root) { throw "Output directory already exists: $root" }
     $stream = [IO.File]::Open($resolved,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)

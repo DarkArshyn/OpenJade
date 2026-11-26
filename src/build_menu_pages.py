@@ -9,7 +9,29 @@ import xml.etree.ElementTree as ET
 from PIL import Image
 from menu_scene import Scene, MenuState
 
-
+def resolve_asset_path(assets, relative):
+    """Resolve historical asset paths without filesystem case assumptions."""
+    assets = assets.resolve(strict=True)
+    relative = Path(relative)
+    if relative.is_absolute() or '..' in relative.parts:
+        raise ValueError(f'Invalid asset path: {relative}')
+    current = assets
+    for part in relative.parts:
+        matches = [
+            item for item in current.iterdir()
+            if item.name.casefold() == part.casefold()
+        ]
+        if not matches:
+            raise FileNotFoundError(f'Asset not found: {current / part}')
+        if len(matches) != 1:
+            raise ValueError(f'Ambiguous asset path: {current / part}')
+        current = matches[0]
+    resolved = current.resolve(strict=True)
+    if not resolved.is_relative_to(assets):
+        raise ValueError(f'Path outside asset root: {relative}')
+    if not resolved.is_file():
+        raise ValueError(f'Asset is not a file: {resolved}')
+    return resolved
 def build(assets,out):
     assets=assets.resolve()
     # Check lexical ancestors before resolving, so junctions cannot hide game paths.
@@ -23,7 +45,7 @@ def build(assets,out):
     sources={str(assets/'pop4common.mgm'):hashlib.sha256(raw).hexdigest()}
     def run(tool,*args):
         env={k:v for k,v in os.environ.items() if k.lower()!='psmodulepath'}
-        subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(tools/tool),*map(str,args)],env=env,check=True,stdout=subprocess.DEVNULL)
+        subprocess.run(['pwsh','-NoProfile','-File',str(tools/tool),*map(str,args)],env=env,check=True,stdout=subprocess.DEVNULL)
     def frame(node):return node.find("KEYFRAMES/KEYFRAME[IDX='0']")
     def page(name):return root.find(".//PAGE[NAME='"+name+"']")
     def named(parent,name):return parent.find("CHILDREN/*[NAME='"+name+"']")
@@ -42,7 +64,7 @@ def build(assets,out):
         if text!=original:evidence.append(dict(page=parent.findtext('NAME'),node=name,stored=original,displayed=text,reason=metadata.pop('reason','Supplied screenshot transcription; not a game default')))
         f=frame(node);font=node.findtext('FONT')
         if font not in fonts:
-            dest='font'+str(len(fonts));path=assets/'fonts'/(font+'.mft')
+            dest='font'+str(len(fonts));path=resolve_asset_path(assets, Path('fonts')/(font+'.mft'))
             run('Read-MFT.ps1','-Path',path,'-OutputDirectory',out/dest)
             fonts[font]=dest;sources[str(path)]=hashlib.sha256(path.read_bytes()).hexdigest()
         anchor=x+float(f.findtext('LEFT'))
@@ -65,8 +87,7 @@ def build(assets,out):
                     images=[(im,x,y) for im in definition.findall('CHILDREN/IMAGE')]
             for im,x,y in images:
                 material=root.find(".//MATERIAL[NAME='"+im.findtext('MATERIAL')+"']")
-                path=(assets/material.findtext('STAGE/FILE').strip('\\').replace('\\','/')).resolve()
-                if not path.is_relative_to(assets):raise ValueError('Texture outside asset root.')
+                path=resolve_asset_path(assets, material.findtext('STAGE/FILE').strip('\\').replace('\\','/'))
                 if path not in textures:
                     dest=out/('texture'+str(len(textures)));run('Export-DDSPreview.ps1','-Path',path,'-OutputDirectory',dest)
                     with Image.open(dest/'texture.png') as image:textures[path]=image.convert('RGBA')
@@ -130,8 +151,7 @@ def build(assets,out):
         definition=root.find(".//*[NAME='"+area+"']")
         im=definition.find('CHILDREN/IMAGE');f=frame(im)
         material=root.find(".//MATERIAL[NAME='"+im.findtext('MATERIAL')+"']")
-        path=(assets/material.findtext('STAGE/FILE').strip('\\').replace('\\','/')).resolve()
-        if not path.is_relative_to(assets):raise ValueError('Texture outside asset root.')
+        path=resolve_asset_path(assets, material.findtext('STAGE/FILE').strip('\\').replace('\\','/'))
         if path not in textures:
             dest=out/('texture'+str(len(textures)));run('Export-DDSPreview.ps1','-Path',path,'-OutputDirectory',dest)
             with Image.open(dest/'texture.png') as image:textures[path]=image.convert('RGBA')

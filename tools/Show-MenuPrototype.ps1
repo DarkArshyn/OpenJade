@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <# .SYNOPSIS
 Opens the experimental menu viewer from an existing prototype report.
 .DESCRIPTION
@@ -8,6 +8,7 @@ no game process is started and input resources remain read-only.
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$ReportDirectory,
       [Parameter(Mandatory)][string]$PythonPath,[switch]$SmokeTest)
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 $report=(Resolve-Path -LiteralPath $ReportDirectory).ProviderPath
 $arguments=@((Join-Path $PSScriptRoot '../src/menu_viewer.py'),$report)

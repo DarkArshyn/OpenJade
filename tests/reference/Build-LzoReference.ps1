@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Builds an optional local test oracle from verified official miniLZO 2.10 sources.
@@ -10,6 +10,8 @@
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$MiniLzoDirectory,
     [Parameter(Mandatory)][string]$CompilerPath,[Parameter(Mandatory)][string]$OutputDirectory)
+Set-StrictMode -Version 3.0
+if (-not $IsWindows) { throw 'Building the miniLZO reference oracle currently requires Windows and MSVC x64.' }
 $ErrorActionPreference='Stop'
 $source=(Resolve-Path -LiteralPath $MiniLzoDirectory).ProviderPath
 $compiler=(Resolve-Path -LiteralPath $CompilerPath).ProviderPath
@@ -20,9 +22,10 @@ $hashes=@{
     'lzodefs.h'='7CDC24F7D8762F0908B30F4959442798427AF8C01C6D925F5594114A45A2A89E'
 }
 foreach($name in $hashes.Keys){if((Get-FileHash (Join-Path $source $name)).Hash -cne $hashes[$name]){throw "Reference source mismatch: $name"}}
-$root=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
-$game=Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'game'
-if($root.Equals($game,[StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($game+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'The game directory is read-only.'}
+$separator = [IO.Path]::DirectorySeparatorChar
+$root = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)))
+$game = [IO.Path]::GetFullPath((Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'game'))
+if ($root.Equals($game, [StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($game + $separator, [StringComparison]::OrdinalIgnoreCase)) { throw 'The game directory is read-only.' }
 if(Test-Path $root){throw 'Reference output directory already exists.'}
 $ancestor=$root
 while($ancestor){
@@ -35,6 +38,6 @@ try {
     & $compiler /nologo /Od /GS- /LD /DLZO_CFG_FREESTANDING=1 /DLZO_BITOPS_USE_MSC_BITSCAN=0 /I (Join-Path $PSScriptRoot 'headers') /I $source (Join-Path $PSScriptRoot 'oracle.c') (Join-Path $source 'minilzo.c') /link /NODEFAULTLIB /NOENTRY /MACHINE:X64 /OUT:oracle.dll
     if($LASTEXITCODE -ne 0){throw 'Reference compilation failed.'}
     [pscustomobject]@{MiniLzoVersion='2.10';SourceHashes=$hashes;Compiler=$compiler;CompilerSHA256=(Get-FileHash $compiler).Hash
-        OracleSHA256=(Get-FileHash (Join-Path $root 'oracle.dll')).Hash;Freestanding=$true} | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $root 'build.json') -Encoding UTF8
+        OracleSHA256=(Get-FileHash (Join-Path $root 'oracle.dll')).Hash;Freestanding=$true} | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $root 'build.json') -Encoding utf8NoBOM
     Write-Host "Reference DLL: $(Join-Path $root 'oracle.dll')"
 }finally{Pop-Location}

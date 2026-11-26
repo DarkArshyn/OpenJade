@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Inspects BIG v37 resource IDs, names and metadata without extracting data.
@@ -7,11 +7,12 @@
 .PARAMETER OutputDirectory
     Optional new directory for index and diagnostic reports.
 .EXAMPLE
-    $big = .\tools\Read-BIG.ps1 -Path .\game\TSoT-GOG\prince.bf -OutputDirectory .\reports\prince-index
+    $big = ./tools/Read-BIG.ps1 -Path ./game/TSoT-GOG/prince.bf -OutputDirectory ./reports/prince-index
     $big.Summary
 #>
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Path,[string]$OutputDirectory)
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot '../src/OpenJade.BIG.psm1')
 $archive=Get-OpenJadeBIGIndex -Path $Path

@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Creates an INI copy of a Windows-1252 text DAT without changing its bytes.
@@ -10,10 +10,11 @@
 .PARAMETER Output
     New INI file path.
 .EXAMPLE
-    .\tools\Convert-DatToIni.ps1 -Path .\reports\pop4pclocal.dat -Output .\reports\pop4pclocal.ini
+    ./tools/Convert-DatToIni.ps1 -Path ./reports/pop4pclocal.dat -Output ./reports/pop4pclocal.ini
 #>
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Output)
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '../src/OpenJade.TextDat.psm1') -Force
 Convert-OpenJadeTextDat @PSBoundParameters

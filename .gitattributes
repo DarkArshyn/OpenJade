@@ -1,0 +1,21 @@
+# Cross-platform source files use LF line endings.
+*.ps1   text eol=lf
+*.psm1  text eol=lf
+*.cs    text eol=lf
+*.py    text eol=lf
+*.java  text eol=lf
+*.rs    text eol=lf
+*.toml  text eol=lf
+
+# Repository documentation and configuration.
+*.md    text eol=lf
+*.json  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Platform-specific scripts.
+*.sh    text eol=lf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf

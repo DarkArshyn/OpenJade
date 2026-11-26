@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Reads an MGM file and optionally writes structural reports.
@@ -10,13 +10,14 @@
 .PARAMETER OutputDirectory
     Optional new directory for summary, CSV tables, diagnostics and a readable tree.
 .EXAMPLE
-    $mgm = .\tools\Read-MGM.ps1 -Path .\reports\menu\pop4common.mgm
+    $mgm = ./tools/Read-MGM.ps1 -Path ./reports/menu/pop4common.mgm
     $mgm.Summary
 .EXAMPLE
-    .\tools\Read-MGM.ps1 -Path .\reports\menu\pop4common.mgm -OutputDirectory .\reports\common-analysis
+    ./tools/Read-MGM.ps1 -Path ./reports/menu/pop4common.mgm -OutputDirectory ./reports/common-analysis
 #>
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Path,[string]$OutputDirectory)
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot '../src/OpenJade.MGM.psm1')
 $document=Get-OpenJadeMGM -Path $Path

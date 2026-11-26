@@ -1,5 +1,5 @@
-#requires -Version 5.1
-Set-StrictMode -Version Latest
+#requires -Version 7.6
+Set-StrictMode -Version 3.0
 Import-Module (Join-Path $PSScriptRoot 'OpenJade.BIGCompression.psm1')
 if (-not ('OpenJade.Lzo1x' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'OpenJade.Lzo1x.cs') }
 

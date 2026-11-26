@@ -1,15 +1,15 @@
-#requires -Version 5.1
+#requires -Version 7.6
 <#
 .SYNOPSIS
     Tests MGM structure, raw-byte preservation, material types and reports.
 .PARAMETER MgmDirectory
     Optional directory containing local MGM files. Original files are only read.
 .EXAMPLE
-    .\tests\Test-MGM.ps1
+    ./tests/Test-MGM.ps1
 #>
 [CmdletBinding()]
 param([string]$MgmDirectory)
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 3.0
 $ErrorActionPreference='Stop'
 $project=Split-Path $PSScriptRoot -Parent
 Import-Module (Join-Path $project 'src/OpenJade.MGM.psm1')
@@ -134,6 +134,6 @@ if ($MgmDirectory) {
 }
 [pscustomobject]@{ Date=(Get-Date).ToString('o'); PowerShell=$PSVersionTable.PSVersion.ToString()
     Checks=$checks.Count; Passed=$checks.ToArray(); RealFiles=$realResults } |
-    ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $run 'verification.json') -Encoding UTF8
+    ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $run 'verification.json') -Encoding utf8NoBOM
 Write-Host "PASS: $($checks.Count) checks. Results: $run"
 $realResults | Format-Table FileName,TagCount,NodeCount,DefinitionCount,ReferenceCount,DiagnosticCount
