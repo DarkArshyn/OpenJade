@@ -2,7 +2,7 @@
 
 [Project overview](../README.md) · [Developer guide](../README-dev.md) · [Research observations](../docs/observations/)
 
-**Documentation snapshot: 2026-11-24**
+**Documentation snapshot: 2026-11-26**
 
 The `engine/` directory contains OpenJade's experimental native engine implementation, developed in **Rust** with **Vulkan** rendering through `ash`.
 
@@ -34,13 +34,18 @@ Initial native Rust engine validation on Linux and macOS was successfully comple
 
 | Platform | Validation scope |
 | --- | --- |
-| Windows | Primary development and integration environment. Vulkan rendering and local testing |
-| Linux | Rust workspace built: **67 unit tests passed**. Menu and actor Vulkan rendering verified |
-| macOS | Rust workspace built: **67 unit tests passed**. Menu and Prince rendering verified. Three runtime tests passed |
+| Windows x86_64 | Primary development and integration environment. Vulkan rendering and local testing |
+| Linux x86_64 | Rust workspace built: **67 unit tests passed**. Menu and actor Vulkan rendering verified |
+| macOS ARM64 | Rust workspace built: **67 unit tests passed**. Menu and Prince rendering verified. Three runtime tests passed |
+| Linux ARM64 | Architectural validation on Raspberry Pi 4B, not a supported deployment target |
 
-No Vulkan validation errors were reported during the recorded Linux and macOS checks.
+No Vulkan validation errors were reported during the recorded initial Linux x86_64 and macOS checks.
 
 ### Tested configurations
+
+**Windows**
+- Windows x86_64.
+- AMD Radeon RX 9070 XT.
 
 **Linux**
 - Manjaro Linux (x86_64).
@@ -53,13 +58,33 @@ No Vulkan validation errors were reported during the recorded Linux and macOS ch
 - Vulkan SDK 1.4.363.1.
 - No macOS-specific source modifications required for the tested Rust workspace.
 
-These results apply only to the engine implementation and tested configurations available on the validation date.
+### Linux ARM64 architectural validation
 
-Broader Linux and macOS support remains experimental. Future changes, hardware configurations and drivers require independent validation.
+Additional testing was performed on a Raspberry Pi 4B to assess the portability of the native engine to Linux on ARM64.
 
-PowerShell and Python research tools were not tested on Linux or macOS as part of these validations. Their preparation workflows must not be considered cross-platform validated.
+This testing represents an architectural validation rather than a supported deployment target. The tested hardware did not provide sufficient performance for a viable runtime experience.
 
-See the [developer guide](../README-dev.md#platform-and-tool-validation) for the validation scope and tooling limitations.
+Raspberry Pi support is not currently a development objective. Further engine development and platform validation will focus on more suitable hardware configurations.
+
+### Research toolchain compatibility
+
+The separate research and resource-preparation toolchain has been migrated to **PowerShell 7.6 LTS**.
+
+Its core workflows and selected Python workflows were validated on Windows x86_64, Linux x86_64 and macOS ARM64 on **2026-11-26**.
+
+PowerShell and Python are used for offline research and resource preparation. Neither is required to launch the native viewer when prepared scene and menu packages are available.
+
+See the [developer guide](../README-dev.md#platform-and-tool-validation) for the recorded research tool validation results and [Research tool setup](../README-dev.md#research-tool-setup) for installation instructions.
+
+### Scope and limitations
+
+Native engine support on Linux and macOS remains experimental.
+
+The recorded results apply only to the engine implementation, hardware configurations, operating systems and Vulkan drivers used during testing.
+
+Future engine revisions, hardware configurations and drivers require independent validation.
+
+Cross-platform validation does not establish game playability or complete original-engine fidelity.
 
 ## Prerequisites
 
@@ -171,11 +196,13 @@ KosmicKrisp uses Apple's Metal API to provide Vulkan functionality on supported 
 
 ### Validation scope
 
-The recorded cross-platform results apply only to the tested Rust engine implementation, hardware, operating systems and Vulkan drivers as of **2026-11-14**.
+The documented native engine prerequisites reflect the tested hardware, operating systems, toolchains and Vulkan drivers.
 
-They do not establish compatibility with future engine revisions or validate the PowerShell and Python research workflows on Linux or macOS.
+These configurations do not establish compatibility with future engine revisions or other development environments.
 
-See [Platform support](#platform-support) and [developer validation](../README-dev.md#platform-and-tool-validation) for details.
+The separate PowerShell 7.6 LTS research toolchain and selected Python workflows have undergone their own cross-platform validation.
+
+See [Platform support](#platform-support) for native engine validation and [developer validation](../README-dev.md#platform-and-tool-validation) for the research toolchain.
 
 ## Building and testing
 
@@ -228,7 +255,11 @@ A fresh checkout contains no original game assets, decoded scenes, generated men
 
 Native previews require locally prepared OpenJade packages generated from the user's own game installation.
 
-See the [native menu workflow](../README-dev.md#native-menu-workflow) for resource preparation and the required research dependencies.
+Resource preparation uses the separate PowerShell 7.6 LTS and Python research toolchain.
+
+See the [research tool setup](../README-dev.md#research-tool-setup) for dependencies and installation instructions, and the [native menu workflow](../README-dev.md#native-menu-workflow) for resource preparation.
+
+Neither PowerShell nor Python is required at runtime when the necessary native packages are already available.
 
 ### Scene-only preview
 
@@ -318,7 +349,7 @@ These components form the foundation of the native Rust engine and are intended 
 - Support for selected historical package versions and optional runtime sidecars.
 - Separation of offline resource preparation from native runtime loading.
 
-The current viewer doesn't directly load original game archives. BF/BIG extraction, POP-LZO decoding and resource-format research are handled by the repository's separate research tools.
+The current viewer doesn't directly load original game archives. BF/BIG extraction, POP-LZO decoding and resource-format research are handled by the repository's separate PowerShell 7.6 LTS, managed C# and Python research tools.
 
 These tools contribute to the project's Jade Engine research but are not yet integrated as general-purpose native archive loaders.
 
@@ -493,6 +524,7 @@ Examples include:
 - `menu.fixtures` for fixture animation.
 - `.actor`, `.sheath` and `.actorlight` for Prince animation, constrained equipment and animated-normal lighting.
 - `.placement` for a bounded actor vertex range and rigid scene placement.
+- `.idle` for optional source-backed Prince idle sequencing and the additional animation clip.
 
 See [actor sidecar formats](../docs/formats/actor-diagnostic-sidecars.md).
 
@@ -559,6 +591,10 @@ An error-free Vulkan run doesn't prove pixel accuracy, and a matching isolated c
 Test counts and results should always be associated with their execution date, environment and scope.
 
 Recorded validation details and reproducible research procedures are available in the [developer guide](../README-dev.md#testing-and-validation) and [dated observations](../docs/observations/).
+
+The separate research toolchain underwent cross-platform validation on 2026-11-26, covering PowerShell syntax checks, synthetic tests, original game resources, selected Python workflows and optional Ghidra static analysis.
+
+These results are documented separately in the [developer guide](../README-dev.md#research-tool-validation) and must not be interpreted as additional native engine test coverage.
 
 ## Known limitations
 

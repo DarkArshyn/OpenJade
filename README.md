@@ -16,7 +16,7 @@ However, OpenJade is not intended to remain limited to a single game. Its long-t
 
 The project emphasizes documented reverse engineering, independently implemented systems, and the preservation of classic games through modern, open-source technology.
 
-Windows remains the primary development platform. Initial native Rust/Vulkan validation has also been completed on Linux and macOS, although broader cross-platform support remains experimental.
+Windows remains the primary development platform. The native Rust/Vulkan engine has undergone initial validation on Linux and macOS, and the project's PowerShell 7.6 LTS research tools and selected Python workflows have been validated on Windows, Linux and macOS. Broader cross-platform engine support remains experimental.
 
 Game resources must come from the user's own local installation and are not distributed here.
 
@@ -63,8 +63,7 @@ animate in real time. The two suspended flames also deform using their decoded v
 - Scene textures retain their decoded dimensions; selected textures now use verified native mipmaps, including the sword. Filtering and generated mipmaps remain available for other textures.
 - Lighting, transparency ordering and visual fidelity remain under investigation; this is not a faithful recreation yet.
 - The sky and moon are now included; some small effects remain absent.
-- Named scene lights are not yet reproduced as runtime lights; recorded vertex colors provide
-part of the current appearance.
+- General runtime scene lighting remains incomplete: recorded vertex colors provide part of the current appearance, while selected decoded lighting contributions are used for the animated Prince.
 - The animated Prince, sword, articulated support and dagger can now be displayed on the balcony, with initial placement derived from the original collision geometry.
 - The prepared native menu now plays his observed idle sequence after Camera02 completes, retaining the equipment animation across clip changes. His vertex lighting updates with animation; the prepared menu uses original scene data for its ambient color and three named lights, and a generated directional contribution follows the camera during the balcony transition. Native startup timing, remaining secondary motion, complete material fidelity and gameplay remain unfinished.
 
@@ -77,6 +76,8 @@ original saves or control a playable character.
 Audio/gameplay and unsupported graphics options are visibly disabled.
 
 Python is used for offline preparation and research, not required alongside a prepared native menu.
+
+The research and resource-preparation toolchain now targets PowerShell 7.6 LTS. Its core workflows have been validated across Windows x86-64, Linux x86-64 and macOS ARM64 using a common source version.
 
 ## Prototype preview
 
@@ -106,9 +107,9 @@ See the [native prototype workflow](README-dev.md#native-menu-workflow) and the 
 | Area | Available today | Main limit |
 | --- | --- | --- |
 | Python menu simulation | Retained as a research/reference tool | No gameplay and optional legacy gamma bridge |
-| Native menu | Interactive 3D menu with navigation, profiles, display settings and local persistence | No playable game, original save loading or functional audio
-| Scene rendering | Reconstructed 3D environment with textures, materials, fog, transparency and selected postprocessing effects | Original lighting and overall visual fidelity remain incomplete
-| Animation and effects | Animated vegetation, curtains, birds, rain, particles, flames and other menu effects | Timing, activation and some visual behaviors remain under investigation
+| Native menu | Interactive 3D menu with navigation, profiles, display settings and local persistence | No playable game, original save loading or functional audio |
+| Scene rendering | Reconstructed 3D environment with textures, materials, fog, transparency and selected postprocessing effects | Original lighting and overall visual fidelity remain incomplete |
+| Animation and effects | Animated vegetation, curtains, birds, rain, particles, flames and other menu effects | Timing, activation and some visual behaviors remain under investigation |
 | Camera02 | Reconstructed nine-second camera transition triggered by Start New Game | No gameplay, cutscene or level loading follows |
 | Prince preview | Original-resource skeletal animation, equipment and animated-normal lighting; prepared balcony integration | Experimental: native timing, general scene lighting, remaining secondary controllers and gameplay are incomplete |
 
@@ -116,7 +117,9 @@ See the [native prototype workflow](README-dev.md#native-menu-workflow) and the 
 
 | Area | Available today | Main limit |
 | --- | --- | --- |
-| Validation | Synthetic tests, Vulkan validation and local visual checks | Windows/AMD primary. Initial Linux/AMD RADV and macOS/Apple Silicon KosmicKrisp validation successful (Rust engine only) |
+| Native engine | Unit tests, Vulkan validation and local visual checks on Windows, Linux and macOS | Windows/AMD remains the primary development environment. Broader hardware and driver coverage is experimental |
+| Research tools | Synthetic tests, original game resource validation, independent DDS comparisons and selected Python workflows on Windows, Linux and macOS | Validation covers selected formats, resources and workflows, not the entire toolchain |
+| Static analysis | Ghidra Headless integration validated on Windows, Linux and macOS | Selected analysis workflows only. Platform-specific dependencies are required |
 
 ## Development approach
 
@@ -124,7 +127,7 @@ OpenJade combines reverse-engineering research with the gradual development of a
 
 The project currently relies on two complementary components:
 
-- **Research tools:** Python, PowerShell and supporting utilities for archive extraction, proprietary format analysis, resource preparation and validation.
+- **Research tools:** Python, PowerShell 7.6 LTS, managed C# components and supporting utilities for archive extraction, proprietary format analysis, resource preparation and validation.
 - **Native engine:** A Rust-based implementation using Vulkan for rendering, progressively reconstructing the behavior of the original engine.
 
 While Prince of Persia: The Sands of Time provides the initial reference, the long-term architectural goal is to distinguish reusable engine functionality from game-specific behavior.
@@ -160,7 +163,7 @@ Future compatibility priorities may evolve based on research findings, technical
 
 ## Cross-platform support
 
-Development remains primarily focused on Windows.
+Development remains primarily focused on Windows, with cross-platform validation covering both the native engine and selected research workflows.
 
 Initial native cross-platform validation was successfully performed on **2026-11-14**, covering the Rust engine on Linux and macOS.
 
@@ -170,6 +173,14 @@ Testing was performed on Manjaro Linux with an AMD Radeon RX 9070 XT using Mesa 
 
 The Rust workspace built successfully, and Vulkan rendering was verified with both the menu and actor scenes. All 67 executed unit tests passed, with no Vulkan validation errors reported.
 
+### Linux - Raspberry Pi (ARM64)
+
+Additional testing was performed on a Raspberry Pi 4B to assess the portability of the native engine to Linux on ARM64.
+
+This testing represents an architectural validation rather than a supported deployment target. The tested hardware did not provide sufficient performance for a viable runtime experience.
+
+Raspberry Pi support is not currently a development objective. Further engine development and platform validation will focus on more suitable hardware configurations.
+
 ### macOS - Apple Silicon (ARM64)
 
 Testing was performed on macOS 27.2.1 with an Apple M3 Pro, using the [KosmicKrisp](https://docs.mesa3d.org/drivers/kosmickrisp.html) Vulkan driver (Vulkan SDK 1.4.363.1).
@@ -178,24 +189,53 @@ The Rust workspace built successfully without macOS-specific source modification
 
 Three runtime tests were completed successfully, with no Vulkan validation errors reported.
 
+### Research and resource-preparation tools
+
+Following Microsoft's [announcement of the deprecation of Windows PowerShell 5.1](https://support.microsoft.com/en-us/servicing/os/windows/docs/2026/11/kb5137172-windows-powershell-5-1-deprecation) on 2026-11-17, the project's research toolchain has been migrated to **PowerShell 7.6 LTS**.
+
+This decision was driven by two main objectives:
+
+- Align with Microsoft's recommended migration path and ensure the long-term maintainability of the research toolchain.
+- Remove the previous Windows-specific runtime requirement and facilitate cross-platform development, research and resource-preparation workflows across Windows, Linux and macOS.
+
+The common source version was validated on **2026-11-26** across three native environments:
+
+| Validation | Windows x86_64 | Linux x86_64 | macOS ARM64 |
+| --- | --- | --- | --- |
+| PowerShell syntax validation | 39/39 | 39/39 | 39/39 |
+| Synthetic checks | 398/398 | 398/398 | 398/398 |
+| Checks with original resources and references | 726/726 | 652/652 | 652/652 |
+| Independent DDS RGBA comparisons | 68/68 | 68/68 | 68/68 |
+| Menu resource preparation | Passed | Passed | Passed |
+| Python GUI smoke tests | Passed | Passed | Passed |
+| Ghidra Headless camera analysis | Passed | Passed | Passed |
+
+All three environments used the same set of 145 source files, verified through SHA-256 checksums before and after the validation campaign.
+
+The additional Windows checks include comparison against an optional native miniLZO reference implementation. The managed POP-LZO decoder was validated using original game resources on all three platforms.
+
+The migration also replaces the previous `System.Drawing` dependency with a managed PNG encoder and addresses platform-specific filesystem behavior, asset path resolution and external tool invocation.
+
 ### Scope and limitations
 
-Testing on Linux and macOS was limited to the Rust engine.
+Native engine support on Linux and macOS remains experimental. Validation has been limited to specific operating systems, hardware configurations, Vulkan drivers and implemented features.
 
-The project's PowerShell tooling currently targets **PowerShell 5.1**, which is Windows-only. Although **PowerShell 7** is available on Linux and macOS, compatibility with these platforms has not been tested or validated. The project's Python tools were also not tested or executed on either platform.
+Research tool validation covers selected archive formats, resource decoders, menu preparation workflows, Python interfaces and Ghidra integration. It doesn't constitute exhaustive validation of every Python or Java script, every supported resource layout or every possible operating environment.
 
-These results apply strictly to the engine's implementation and features available at the time of testing. They do not guarantee compatibility with future development or changes to the engine.
+The optional native miniLZO reference was tested on **Windows only**. Ghidra and other external dependencies may require platform-specific installation or configuration.
 
-Linux and macOS support remain experimental. Validation has been limited to the specific operating systems, hardware, and Vulkan drivers described above. Broader cross-platform support remains a long-term objective as the engine matures.
+These results apply to the implementations and features available at the time of testing. They don't guarantee compatibility with future development or other hardware and software configurations.
+
+Cross-platform validation doesn't imply game playability or complete visual fidelity.
 
 There is no completion date or reliable overall completion percentage.
 See [milestones and validation criteria](README-dev.md#roadmap-and-milestones).
 
 ## Getting started
 
-Development remains primarily focused on Windows. The native Rust/Vulkan engine has also undergone initial validation on Linux and macOS, as described above.
+Windows remains the primary development platform. The native Rust/Vulkan engine and selected research workflows have also undergone cross-platform validation, as described above.
 
-The native viewer requires platform-specific Rust/Vulkan dependencies and locally prepared scene/menu bundles. Research workflows currently use the documented Windows PowerShell 5.1 and Python environment.
+The native viewer requires platform-specific Rust/Vulkan dependencies and locally prepared scene/menu bundles. Research workflows use [PowerShell 7.6 LTS](https://learn.microsoft.com/en-us/powershell/scripting/install/install-powershell-on-windows?view=powershell-7.6), Python and the relevant dependencies documented in the developer guide.
 
 Ghidra supports optional static analysis and is not required to launch a prepared preview.
 

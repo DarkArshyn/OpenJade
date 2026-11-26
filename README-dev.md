@@ -2,23 +2,25 @@
 
 [Project overview](README.md) · [Native engine guide](engine/README.md) · [Research observations](docs/observations/)
 
-**Documentation snapshot: 2026-11-24**
+**Documentation snapshot: 2026-11-26**
 
-This document describes the current development workflows and points to dated evidence, it's not a compatibility guarantee. Original game inputs remain read-only.
+This document describes the current development workflows and points to dated evidence. It's not a compatibility guarantee. Original game inputs remain read-only.
 
 ## Development environment
 
 - Windows remains the primary development and integration platform.
-- The Rust engine has undergone initial native build, test and Vulkan validation on Windows, Linux and macOS. See [Platform and tool validation](#platform-and-tool-validation).
-- Windows PowerShell 5.1 remains the documented research shell.
+- The Rust engine has undergone native build, test and Vulkan validation on Windows, Linux and macOS. See [Platform and tool validation](#platform-and-tool-validation).
+- PowerShell 7.6 LTS is the required research shell, replacing Windows PowerShell 5.1.
+- Core PowerShell research workflows and selected Python workflows have been validated on Windows x86_64, Linux x86_64 and macOS ARM64.
 - Rust/Cargo, ash, winit and Vulkan are used for the native engine. Platform-specific build requirements are documented in [engine/README.md](engine/README.md#prerequisites).
 - The Vulkan SDK provides `glslc` for shader compilation. Khronos validation layers can be enabled for runtime checks.
 - Python with Pillow and NumPy supports research and exports; tkinter is used by the separate Python menu simulation.
-- C# helpers support selected research decoding tasks.
+- Managed C# helpers support selected resource decoding and PNG generation tasks without requiring System.Drawing.
 - Ghidra and a compatible JDK support optional native static analysis.
 - Source comments and documentation are written in English. Dates use `YYYY-MM-DD`.
+- Repository-level line-ending policies are defined in `.gitattributes`, using LF for cross-platform source files.
 
-Tool versions and platform requirements may vary. Consult the engine guide before configuring a new development environment.
+Tool versions and platform requirements may vary. Consult the engine guide and [Research tool setup](#research-tool-setup) before configuring a new development environment.
 
 ## Start here
 
@@ -40,17 +42,110 @@ Many examples below refer to **previously generated research reports**, not inpu
 
 ## Platform and tool validation
 
-Development remains primarily focused on Windows.
+Development remains primarily focused on Windows. Cross-platform validation covers both the native engine and selected research and resource-preparation workflows.
+
+### Native engine validation
 
 Initial native validation of the Rust engine on Linux and macOS was successfully completed on **2026-11-14**. These results don't establish complete cross-platform support.
 
-| Platform | Verified Rust engine scope (2026-11-14) | Research tooling scope |
-| --- | --- | --- |
-| Windows | Primary development and integration platform<br>Local Vulkan viewer and research workflows | Windows PowerShell 5.1, Python and associated tools are used here |
-| Linux | Rust workspace built<br>Menu and actor Vulkan rendering checked: **67 unit tests passed**<br>No Vulkan validation errors reported | PowerShell 7 and Python tools **not tested** on Linux |
-| macOS | Rust workspace built without macOS-specific source changes<br>Menu and separate Prince scene rendered: **67 unit tests passed**<br>Three runtime tests passed and no Vulkan validation errors reported | PowerShell 7 and Python tools **not tested** on macOS |
+| Platform | Verified Rust engine scope (2026-11-14) |
+| --- | --- |
+| Windows x86_64 | Primary development and integration platform<br>Local Vulkan viewer and research workflows |
+| Linux x86_64 | Rust workspace built<br>Menu and actor Vulkan rendering checked<br>**67 unit tests passed**<br>No Vulkan validation errors reported |
+| macOS ARM64 | Rust workspace built without macOS-specific source changes<br>Menu and separate Prince scene rendered<br>**67 unit tests passed**<br>Three runtime tests passed and no Vulkan validation errors reported |
 
-For platform-specific build dependencies and current launch options, see [engine/README.md](engine/README.md#prerequisites). Avoid interpreting the cross-platform Rust tests as validation of the full preparation pipeline.
+Additional Linux ARM64 testing was performed on a Raspberry Pi 4B. This was an architectural validation rather than a supported deployment target. The tested hardware didn't provide sufficient performance for a viable runtime experience.
+
+For platform-specific build dependencies, hardware configurations and current launch options, see [engine/README.md](engine/README.md).
+
+### Research tool validation
+
+Following Microsoft's [announcement of the deprecation of Windows PowerShell 5.1](https://support.microsoft.com/en-us/servicing/os/windows/docs/2026/11/kb5137172-windows-powershell-5-1-deprecation) on 2026-11-17, the research toolchain was migrated to **PowerShell 7.6 LTS** to improve long-term maintainability and facilitate cross-platform development.
+
+The final common source version was validated on **2026-11-26**.
+
+#### Validated environments
+
+| Component | Windows x86_64 | Manjaro Linux x86_64 | macOS ARM64 |
+| --- | --- | --- | --- |
+| PowerShell | 7.6.6 | 7.6.9 | 7.6.6 |
+| .NET runtime | 10.0.12 | 10.0.14 | 10.0.12 |
+| Python | 3.15.0 | 3.14.10 | 3.15.2 |
+| Pillow | 12.3.0 | 13.0.0 | 13.0.0 |
+| NumPy | 2.5.4 | 2.5.4 | 2.5.5 |
+| Tk | 9.0 | 8.6 | 9.0 |
+| Ghidra | 12.1.4 | 12.1.4 | 12.1.4 |
+| JDK | 21.0.12.1+1 | 21.0.13.0.3+1 | 21.0.2+13 |
+
+All three environments used native execution for the tested workflows.
+
+These versions describe the recorded validation environments, not mandatory exact dependency versions or an exhaustive compatibility matrix. The .NET runtime versions correspond to those used by the installed PowerShell distributions. A separate .NET SDK installation is not required for the managed C# helpers used by the validated research workflows.
+
+#### Validation results
+
+| Test suite | Synthetic checks per platform | Windows | Linux | macOS |
+| --- | ---: | ---: | ---: | ---: |
+| BF | 68 | 150 | 150 | 150 |
+| BIG | 33 | 38 | 38 | 38 |
+| BIG compression | 25 | 34 | 34 | 34 |
+| BIG extraction | 37 | 42 | 42 | 42 |
+| DDS preview | 36 | 101 | 101 | 101 |
+| MFT | 34 | 59 | 59 | 59 |
+| MFT text preview | 14 | 39 | 39 | 39 |
+| MGM | 54 | 73 | 73 | 73 |
+| MGM resource links | 30 | 44 | 44 | 44 |
+| POP-LZO | 44 | 120 | 46 | 46 |
+| Text DAT | 23 | 26 | 26 | 26 |
+| **Total** | **398** | **726** | **652** | **652** |
+
+The platform columns describe runs with original game resources and available optional references. These totals include synthetic checks and should not be added to the separate synthetic-only counts.
+
+All 39 PowerShell scripts and modules passed syntax validation on each platform.
+
+The additional Windows checks include 33 differential cases against an optional native miniLZO reference implementation.
+
+Additional validation covered:
+
+- 3,308 valid BIG archive entries.
+- 3,302 original resources containing 7,461 recognized POP-LZO blocks.
+- 63 original DDS textures and 68 exact RGBA comparisons against Pillow.
+- 199 resolved MGM resource references, with no reported attention items.
+- Menu prototype generation and five menu scene exports.
+- Effects resource generation.
+- Python prototype and complete simulation GUI smoke tests.
+- Manual launch of both Python interfaces.
+- Ghidra Headless camera analysis, including successful decompilation of two referenced functions.
+
+#### Common source integrity
+
+A common manifest of 145 source files was used throughout the final validation campaign:
+
+| Source type | File count |
+| --- | ---: |
+| PowerShell scripts | 31 |
+| PowerShell modules | 8 |
+| C# | 2 |
+| Python | 86 |
+| Java | 18 |
+| **Total** | **145** |
+
+SHA-256 checksums confirmed that the selected source files were identical across all three environments before and after validation.
+
+The manifest covered the selected research source tree, not every file in the repository or every external dependency.
+
+Following integration into the primary Windows repository, all 145 reference source files were verified again and all 398 synthetic checks passed.
+
+### Scope and limitations
+
+- Native engine support remains experimental outside the primary development environment.
+- Research validation covers selected formats, original resources and workflows, not every Python or Java script.
+- The optional native miniLZO reference was tested on **Windows only**.
+- Ghidra requires platform-specific dependencies. The tested macOS distribution required compilation of native ARM64 components.
+- Ghidra reported non-blocking internal analysis diagnostics; successful targeted analysis does not imply complete executable analysis.
+- MFT comparison workflows executed successfully, but original-game visual fidelity remains unverified.
+- Cross-platform validation does not establish game playability or guarantee compatibility with future versions.
+
+For research tool installation and reproducible commands, see [Research tool setup](#research-tool-setup) and [Testing and validation](#testing-and-validation).
 
 ## Current implementation
 
@@ -63,7 +158,7 @@ The table describes **implementation scope**, not original-game fidelity. A veri
 | Scene and camera | Reconstructed Sands of Time menu scene, texture/material paths, Camera02 nine-second baked transition | Original runtime scripting, full render-state and lighting parity unverified |
 | Scene effects | Selected animated UVs, palms, curtains, rain/splash, birds/flies, pollen, fog, cursor glow, fixtures and partial postprocessing | Native timing/random-state synchronization and full effect composition unresolved |
 | Prince diagnostics | Original-resource animation/skinning, equipment, lighting, sword reflection and the observed menu idle sequence tied to Camera02 | Absolute startup phase, general action selection, remaining secondary controllers and gameplay are incomplete |
-| Platform coverage | Windows primary; bounded Linux/macOS Rust build, test and Vulkan checks on 2026-11-14 | Python/PowerShell not validated cross-platform; no future compatibility guarantee |
+| Platform coverage | Windows primary; bounded native Rust/Vulkan validation and common PowerShell 7.6 LTS research tool validation on Windows, Linux and macOS | Selected hardware, formats and workflows only; no exhaustive toolchain or future compatibility guarantee |
 
 **Validation vocabulary:**
 - `implemented` = present within a specified scope
@@ -78,7 +173,7 @@ The table describes **implementation scope**, not original-game fidelity. A veri
 1. Clone the repository and consult [engine/README.md](engine/README.md#prerequisites) for toolchain and Vulkan prerequisites.
 2. For source-only checks, start with [Testing and validation](#testing-and-validation).
 3. For a visual preview, use original resources from your own installation and prepare the local exports described under [Native menu workflow](#native-menu-workflow) or [Actor diagnostics](#actor-diagnostics).
-4. For archives, resource analysis and research exports, follow [Research tool setup](#research-tool-setup) on the documented Windows research toolchain.
+4. For archives, resource analysis and research exports, install [PowerShell 7.6 LTS](https://learn.microsoft.com/en-us/powershell/scripting/install/install-powershell?view=powershell-7.6) and follow [Research tool setup](#research-tool-setup) for the relevant platform.
 
 Exporters commonly require **previously generated research reports**. They do not replace archive extraction or automatically reconstruct the full dependency chain from a clean clone. Output directories generally must be new; generated files belong under ignored `reports/`, never under `game/`.
 
@@ -86,6 +181,7 @@ Exporters commonly require **previously generated research reports**. They do no
 
 | Location | Responsibility |
 | --- | --- |
+| `.gitattributes` | Repository-level line-ending policies for cross-platform source files and platform-specific scripts |
 | `engine/` | Rust workspace, package readers, Vulkan renderer and native viewer |
 | `src/` | Research decoders/exporters, helpers and legacy Python simulation |
 | `tools/` | Research command wrappers and Ghidra helpers |
@@ -129,11 +225,13 @@ These names are provisional and may change as the project evolves.
 | Prince actor diagnostics | Source-resource geometry and sampled Rust skeletal animation/skinning | Secondary controllers, dynamic actor lighting and broader actor runtime |
 | Core game systems | Not playable; no general gameplay runtime | Investigate scene/object logic, collision, player control, audio and game loading |
 | Other games | Objectives only | Independent version/resource/runtime research for each title |
-| Cross-platform | Initial Windows/Linux/macOS Rust validation in recorded configurations | Repeat on new versions, hardware and drivers; validate preparation tools separately |
+| Cross-platform | Initial Windows/Linux/macOS Rust validation in recorded configurations; common PowerShell 7.6 LTS research workflows validated on all three platforms | Repeat validation on new versions, hardware and drivers; extend coverage of remaining preparation and research workflows |
 
 There is no reliable overall completion percentage, release date or guaranteed schedule. Test counts and resource coverage are not proxies for overall engine completeness.
 
 ## Testing and validation
+
+### Native Rust engine
 
 From `engine/`:
 
@@ -145,16 +243,102 @@ cargo test --workspace
 
 These commands are *instructions*, not claims that every check ran on every platform. The specific Linux/macOS outcomes above come from the **2026-11-14** validation. Local Vulkan smoke tests additionally require the relevant GPU/driver, validation layers where applicable, and prepared scene bundles.
 
-From the repository root, using the **documented Windows research environment**:
+### PowerShell research tools
+
+Run the following commands from the repository root using PowerShell 7.6 LTS.
+
+#### Environment verification
 
 ```powershell
-python -m unittest discover -s tests -p 'test_export_engine*.py'
-python -m unittest discover -s tests -p 'test_native_mips.py'
-python -m unittest discover -s tests -p 'test_menu_postprocess.py'
-python -m unittest discover -s tests -p 'test_menu_blur.py'
+$PSVersionTable
+[System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture
+[System.Runtime.InteropServices.RuntimeInformation]::FrameworkDescription
 ```
 
-Many other test scripts require private reports or game-derived fixtures. Read the corresponding [observation](docs/observations/) before running them. Historical numbers such as 27, 30, 37 or 57 passing tests describe **earlier runs**, not the size of the latest suite. A passing Vulkan smoke run does not prove original-game pixel parity.
+#### Syntax validation
+
+```powershell
+$psFiles = @(Get-ChildItem -Path ./src,./tests,./tools -Recurse -File -Include *.ps1,*.psm1)
+$parseErrors = @(foreach ($file in $psFiles) { $tokens = $null; $errors = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors); $errors })
+if ($parseErrors.Count -eq 0) { "PASS: All $($psFiles.Count) PowerShell files parsed successfully." } else { $parseErrors; throw "PowerShell syntax validation failed." }
+```
+
+The 2026-11-26 validation covered 39 PowerShell files.
+
+#### Synthetic tests
+
+```powershell
+Get-ChildItem -LiteralPath ./tests -File -Filter 'Test-*.ps1' | Sort-Object Name | ForEach-Object { $timer = [Diagnostics.Stopwatch]::StartNew(); & pwsh -NoProfile -File $_.FullName; $exitCode = $LASTEXITCODE; $timer.Stop(); [PSCustomObject]@{Test=$_.Name;ExitCode=$exitCode;Seconds=[math]::Round($timer.Elapsed.TotalSeconds,2)} }
+```
+
+Each test suite runs in a separate PowerShell process. All exit codes must be zero.
+
+The common source version validated on 2026-11-26 passed 398 synthetic checks across eleven test suites on Windows, Linux and macOS.
+
+#### Tests with original game resources
+
+The following commands require local game archives and previously extracted menu resources.
+
+```powershell
+$bf = './game/TSoT-GOG/POPData.BF'
+$big = './game/TSoT-GOG/prince.bf'
+$menu = './reports/POPData-extracted/menu'
+$textures = Join-Path $menu 'texture'
+$fonts = Join-Path $menu 'fonts'
+$textDat = './reports/POPData-extracted/pop4pclocal.dat'
+```
+
+Select `$pythonPath` as described in [Research tool setup](#research-tool-setup).
+
+```powershell
+pwsh -NoProfile -File ./tests/Test-BF.ps1 -GameArchive $bf
+pwsh -NoProfile -File ./tests/Test-BIG.ps1 -GameArchive $big
+pwsh -NoProfile -File ./tests/Test-BIGCompression.ps1 -GameArchive $big
+pwsh -NoProfile -File ./tests/Test-BIGExtraction.ps1 -GameArchive $big
+pwsh -NoProfile -File ./tests/Test-DDSPreview.ps1 -TextureDirectory $textures -PythonPath $pythonPath
+pwsh -NoProfile -File ./tests/Test-MFT.ps1 -FontDirectory $fonts
+pwsh -NoProfile -File ./tests/Test-MFTTextPreview.ps1 -FontDirectory $fonts
+pwsh -NoProfile -File ./tests/Test-MGM.ps1 -MgmDirectory $menu
+pwsh -NoProfile -File ./tests/Test-MGMLinks.ps1 -MenuDirectory $menu
+pwsh -NoProfile -File ./tests/Test-POPLzo.ps1 -GameArchive $big
+pwsh -NoProfile -File ./tests/Test-TextDat.ps1 -TextDat $textDat
+```
+
+The original game resources must remain read-only. Generated reports are written to local output directories.
+
+#### Optional native miniLZO reference (Windows)
+
+The managed POP-LZO decoder does not require the native miniLZO reference library.
+
+An optional differential comparison can be performed with a compatible, previously built reference DLL:
+
+```powershell
+$referenceDll = Read-Host 'Path to the native miniLZO reference DLL'
+pwsh -NoProfile -File ./tests/Test-POPLzo.ps1 -GameArchive $big -ReferenceDll $referenceDll
+```
+
+The optional reference build helper is located at `tests/reference/Build-LzoReference.ps1` and currently targets Windows/MSVC.
+
+The recorded cross-platform campaign used an existing reference DLL on Windows. Building the reference library and running the native comparison on Linux or macOS were not part of this validation.
+
+### Python tests
+
+From the repository root, using the Python interpreter configured in [Research tool setup](#research-tool-setup):
+
+```powershell
+& $pythonPath -m unittest discover -s tests -p 'test_export_engine*.py'
+& $pythonPath -m unittest discover -s tests -p 'test_native_mips.py'
+& $pythonPath -m unittest discover -s tests -p 'test_menu_postprocess.py'
+& $pythonPath -m unittest discover -s tests -p 'test_menu_blur.py'
+```
+
+These are selected test entry points. They were not all independently executed as part of the 2026-11-26 cross-platform research tool validation.
+
+Many other test scripts require private reports or game-derived fixtures. Read the corresponding [observation](docs/observations/) before running them.
+
+Historical numbers such as 27, 30, 37 or 57 passing tests describe **earlier runs**, not the size of the latest suite.
+
+A passing Vulkan smoke run does not prove original-game pixel parity.
 
 ## Native menu workflow
 
@@ -164,18 +348,18 @@ The Rust viewer draws the reconstructed menu over the 3D scene in one window. It
 
 The following is an **existing-report workflow**, not a clean-clone build recipe. Run from the repository root on the documented research environment; replace report paths with your own generated inputs and use new output directories.
 
+Run these commands using PowerShell 7.6 LTS and the Python interpreter configured in [Research tool setup](#research-tool-setup).
+
 ```powershell
-python src/assemble_menu_scene.py reports/menu3d-focused-4d627a9470c84b73bfc16ae467514310/FF000CB9-decoded/decoded.bin reports/menu-sky-moon-20261030/source-final --yaw 0 --pitch 0 --fov 59.37908
-python src/export_engine_materials.py reports/menu-sky-moon-20261030/source-final reports/camera02-transition-20261026/preview/poses.json reports/palm-runtime-20261101 --palm-source reports/menu3d-focused-4d627a9470c84b73bfc16ae467514310/FF000CB9-decoded/decoded.bin
-python src/export_engine_ui.py reports/menu-effects-fix-8796132f9b234657a4a88218be9cb644 reports/menu3d-focused-4d627a9470c84b73bfc16ae467514310/FF000CB9-decoded/decoded.bin reports/engine-ui-20261028
-foreach ($size in 10,12,14,16,18,20,22,24,26,28,36,48) {
-    .\tools\Read-MFT.ps1 -Path "reports/POPData-extracted/menu/fonts/atlantis mf regular $size.mft" -OutputDirectory "reports/native-ui-fonts-20261029/$size" | Out-Null
-}
-python src/export_native_menu.py reports/menu-effects-fix-8796132f9b234657a4a88218be9cb644 reports/engine-ui-20261028/menu.ojui reports/engine-ui-scale-20261029 --fonts reports/native-ui-fonts-20261029
+& $pythonPath src/assemble_menu_scene.py reports/menu3d-focused-4d627a9470c84b73bfc16ae467514310/FF000CB9-decoded/decoded.bin reports/menu-sky-moon-20261030/source-final --yaw 0 --pitch 0 --fov 59.37908
+& $pythonPath src/export_engine_materials.py reports/menu-sky-moon-20261030/source-final reports/camera02-transition-20261026/preview/poses.json reports/palm-runtime-20261101 --palm-source reports/menu3d-focused-4d627a9470c84b73bfc16ae467514310/FF000CB9-decoded/decoded.bin
+& $pythonPath src/export_engine_ui.py reports/menu-effects-fix-8796132f9b234657a4a88218be9cb644 reports/menu3d-focused-4d627a9470c84b73bfc16ae467514310/FF000CB9-decoded/decoded.bin reports/engine-ui-20261028
+foreach ($size in 10,12,14,16,18,20,22,24,26,28,36,48) { ./tools/Read-MFT.ps1 -Path "reports/POPData-extracted/menu/fonts/atlantis mf regular $size.mft" -OutputDirectory "reports/native-ui-fonts-20261029/$size" | Out-Null }
+& $pythonPath src/export_native_menu.py reports/menu-effects-fix-8796132f9b234657a4a88218be9cb644 reports/engine-ui-20261028/menu.ojui reports/engine-ui-scale-20261029 --fonts reports/native-ui-fonts-20261029
 ```
 
 > [!NOTE]
-> These paths document the development workstation's research lineage. A newcomer cannot execute them from a fresh clone without first reproducing the required extractions and reports. Some older bundles do not include later fog, cursor or actor sidecars.
+> These paths document the development workstation's research lineage. A newcomer cannot execute them from a fresh clone without first reproducing the required extractions and reports. Some older bundles do not include later fog, cursor or actor sidecars. The complete historical native asset-preparation pipeline was not independently revalidated on all platforms during the PowerShell migration.
 
 ### Launching the prepared viewer
 
@@ -231,7 +415,7 @@ cargo run -p jade-viewer -- --scene ../reports/menu-prince-idle-20261123/menu.oj
 ```
 
 This example requires existing local exports, including `menu.idle` for the new sequence. `src/export_prince_idle.py <scene.actor> <scene.idle> --sources <decoded actor bundles>` generates that optional sidecar from original clip `330010E9`, verifies the source skeleton and refuses to overwrite an existing output. Older packages without `.idle` retain their previous single-clip preview. This example requires existing local exports. Initial Z now comes from the original balcony collision triangle; checkpoint XY and orientation are preserved. The engine applies this placement to animated vertices through `.placement`. See [grounded menu integration](docs/observations/2026-11-15-prince-grounded-integration.md) for source/native comparisons, tests and frame timings. Continuous collision and player movement are not implemented.
-This Windows update has not been revalidated on Linux/macOS.
+The prepared Prince idle menu has subsequently undergone native runtime validation on Linux and macOS. This doesn't establish complete cross-platform validation of every actor diagnostic or preparation workflow.
 
 [Balcony pose and loop validation](docs/observations/2026-11-15-prince-balcony-validation.md) adds five repeatable endpoint-camera captures and a live frame-time baseline. The measured four-second sheath reset discontinuity is corrected by [preserving controller state across native-observed body loops](docs/observations/2026-11-15-prince-sheath-loop.md). Initial collision-based placement is validated; dynamic collision, native startup and general action selection remain unimplemented or unvalidated. See the [ground-placement measurements](docs/observations/2026-11-15-prince-ground-placement.md): the native origin is stable; the subsequent [native contact capture](docs/observations/2026-11-15-prince-native-ground.md) identifies the supporting collision triangle.
 
@@ -245,21 +429,227 @@ Research lineage and reproducible fixture requirements:
 
 ## Research tool setup
 
-The workflow below is documented for **Windows PowerShell 5.1**. It hasn't been validated with PowerShell 7 on Linux/macOS
+The research toolchain requires **PowerShell 7.6 LTS**.
 
-The Python tools haven't been executed there in the recorded cross-platform checks.
+The core research workflows have been validated on Windows x86_64, Manjaro Linux x86_64 and macOS ARM64. See [Platform and tool validation](#platform-and-tool-validation) for the recorded environments and validation scope.
 
-From the repository root:
+### PowerShell
+
+Install PowerShell 7.6 LTS for your operating system and architecture:
+
+- [PowerShell releases](https://github.com/PowerShell/PowerShell/releases)
+- [Official installation documentation](https://learn.microsoft.com/en-us/powershell/scripting/install/install-powershell?view=powershell-7.6)
+
+On Manjaro Linux, the `powershell-lts-bin` package was used during validation:
+
+```shell
+pamac build powershell-lts-bin
+```
+
+This is a distribution-specific community package, not a universal Linux installation procedure.
+
+Launch PowerShell from your terminal:
+
+```shell
+pwsh
+```
+
+Verify the installed version:
+
+```powershell
+$PSVersionTable
+```
+
+Use `pwsh`, not `powershell.exe`, for the project's research workflows.
+
+### Python
+
+Python is required for selected resource preparation, comparison and research workflows. Pillow and NumPy provide image-processing and numerical functionality. tkinter is required for the optional Python GUI tools.
+
+Python 3.14 and 3.15 were used during the recorded validation campaign. These versions describe the tested environments rather than an exhaustive Python compatibility range.
+
+#### Windows
+
+Install a native Python distribution with tkinter support.
+
+From PowerShell:
 
 ```powershell
 $pythonPath = (Get-Command python -ErrorAction Stop).Source
-& $pythonPath -m pip install Pillow numpy
-& $pythonPath -c "import tkinter, PIL, numpy; print('Research dependencies available')"
 ```
 
-Some decoding helpers also use C#. Ghidra and a JDK are optional for static analysis, neither is required for a prepared Vulkan viewer. Keep original archives read-only: create new destinations in `reports/`.
+#### Linux
 
-The exact Python package and native development prerequisites are described in the relevant scripts and [engine guide](engine/README.md#prerequisites).
+Install Python and the relevant Tk dependencies using the distribution's package manager.
+
+On the tested Manjaro Linux environment, the additional `tk` package was required:
+
+```shell
+pamac install tk
+```
+
+From PowerShell:
+
+```powershell
+$pythonPath = (Get-Command python3 -ErrorAction Stop).Source
+```
+
+#### macOS
+
+Use a native Python installation for the host architecture with tkinter support.
+
+The recorded Apple Silicon validation used Python 3.15.2 from the [official Python distribution](https://www.python.org/downloads/macos/).
+
+Select the installed interpreter explicitly rather than relying on the system-provided Python:
+
+```powershell
+$pythonPath = '/Library/Frameworks/Python.framework/Versions/3.15/bin/python3.15'
+```
+
+Adjust this path to match the installed Python version.
+
+#### Python virtual environment
+
+Using a dedicated virtual environment is recommended to isolate project dependencies.
+
+The following commands create a virtual environment outside the repository:
+
+```powershell
+$venv = Join-Path $HOME '.venvs/openjade'
+& $pythonPath -m venv $venv
+$pythonPath = if ($IsWindows) { Join-Path $venv 'Scripts/python.exe' } else { Join-Path $venv 'bin/python' }
+```
+
+Install the required Python packages:
+
+```powershell
+& $pythonPath -m pip install --upgrade pip
+& $pythonPath -m pip install Pillow numpy
+```
+
+Verify the interpreter and dependencies:
+
+```powershell
+& $pythonPath -c "import sys, platform, PIL, numpy, tkinter; print(sys.version); print(platform.machine()); print('Pillow:', PIL.__version__); print('NumPy:', numpy.__version__); print('Tk:', tkinter.TkVersion)"
+```
+
+For GUI workflows, verify that tkinter can open a window:
+
+```powershell
+& $pythonPath -m tkinter
+```
+
+Keep `$pythonPath` available in the PowerShell session for the commands documented below.
+
+### Managed C# components
+
+Selected decoding helpers are implemented in C# and loaded through PowerShell.
+
+- `src/OpenJade.Dds.cs` provides DDS decoding and managed PNG generation.
+- `src/OpenJade.Lzo1x.cs` provides managed LZO decoding functionality.
+
+The PowerShell 7 migration replaces the previous `System.Drawing` dependency with a managed PNG encoder using .NET compression and stream APIs.
+
+No separate graphics library installation is required for these managed decoding helpers.
+
+### Optional Ghidra static analysis
+
+Ghidra and a compatible JDK are optional dependencies used for static executable analysis. Neither is required to launch a prepared native Vulkan viewer.
+
+Ghidra 12.1.4 and JDK 21 were used during the recorded validation campaign.
+
+Download Ghidra from its [official releases](https://github.com/NationalSecurityAgency/ghidra/releases) and follow its installation requirements.
+
+Use a JDK and native Ghidra components appropriate for the host platform and architecture.
+
+Set the paths to the installed tools from PowerShell:
+
+```powershell
+$ghidraDirectory = Read-Host 'Path to the Ghidra installation'
+$javaHome = Read-Host 'Path to the JDK installation'
+```
+
+On the tested Manjaro Linux environment, JDK 21 was installed using:
+
+```shell
+pamac install jdk21-openjdk
+```
+
+The corresponding JDK directory was:
+
+```powershell
+$javaHome = '/usr/lib/jvm/java-21-openjdk'
+```
+
+On macOS, the installed JDK 21 directory can be selected using:
+
+```powershell
+$javaHome = (& /usr/libexec/java_home -v 21).Trim()
+```
+
+#### macOS ARM64 native components
+
+The Ghidra distribution used during validation did not initially contain the required native ARM64 decompiler.
+
+The native components were successfully built using the installed Xcode toolchain, JDK 21 and the Gradle wrapper provided with Ghidra.
+
+```powershell
+$env:JAVA_HOME = $javaHome
+Push-Location (Join-Path $ghidraDirectory 'support/gradle')
+./gradlew buildNatives
+Pop-Location
+```
+
+For the tested distribution, the resulting native decompiler was located at:
+
+```text
+Ghidra/Features/Decompiler/build/os/mac_arm_64/decompile
+```
+
+The compiled executable was verified as a native Mach-O ARM64 binary.
+
+These instructions describe the tested Ghidra distribution. Other releases may already provide the required native components or use different build procedures.
+
+#### Ghidra Headless validation
+
+From the repository root, using a local game executable:
+
+```powershell
+$exe = './game/TSoT-GOG/POP.EXE'
+$outputDirectory = Join-Path $PWD "reports/native-camera-$([Guid]::NewGuid().ToString('N'))"
+pwsh -NoProfile -File ./tools/Invoke-NativeCameraAnalysis.ps1 -Path $exe -GhidraDirectory $ghidraDirectory -JavaHome $javaHome -OutputDirectory $outputDirectory
+```
+
+The PowerShell wrapper selects the platform-appropriate Ghidra launcher.
+
+Inspect the verification report:
+
+```powershell
+Get-Content -LiteralPath (Join-Path $outputDirectory 'verification.json')
+```
+
+The recorded validation successfully exported and decompiled two referenced camera functions on all three platforms:
+
+- `0045f2a0`
+- `00463e10`
+
+The verification report must confirm matching source and snapshot SHA-256 checksums and `GameExecuted: false`.
+
+Ghidra may report missing external libraries and internal analysis diagnostics. These must be evaluated according to their effect on the targeted analysis.
+
+### Filesystem and resource handling
+
+- Run PowerShell commands from the repository root unless otherwise specified.
+- Use portable relative paths and `Join-Path` for dynamically constructed paths.
+- Preserve the original game resources and their stored byte sequences.
+- Historical asset references may differ in letter case from extracted filenames. Selected menu preparation workflows resolve these names independently of filesystem case sensitivity.
+- Use new output directories under `reports/`.
+- Preserve existing output-directory and symbolic-link safety checks.
+- Generated reports use explicit text encodings where applicable.
+- Repository source line-ending policies are defined in `.gitattributes`.
+
+Keep original archives read-only. Never use `game/` as an output directory.
+
 
 ## Resource workflows
 
@@ -267,29 +657,92 @@ These are **selected entry points**, not a complete dependency-free export pipel
 
 | Task | Command / starting point | Specification or evidence |
 | --- | --- | --- |
-| Inspect BF index | `.\tools\Read-BF.ps1 -Path .\game\TSoT-GOG\POPData.BF` | [BF format](docs/formats/BF.md) |
-| Extract BF entry | `.\tools\Extract-BF.ps1 -Path .\game\TSoT-GOG\POPData.BF -Entry gamepads.dat -OutputDirectory .\reports\gamepads` | [BF baseline](docs/observations/2026-10-09-bf-baseline.md) |
-| Inspect BIG | `.\tools\Read-BIG.ps1 -Path .\game\TSoT-GOG\prince.bf -OutputDirectory .\reports\prince-index` | [BIG format](docs/formats/BIG.md) |
-| Extract BIG stored bytes | `.\tools\Extract-BIG.ps1 -Path .\game\TSoT-GOG\prince.bf -Id '0x03090337' -OutputDirectory .\reports\versiontag` | [Stored extraction](docs/observations/2026-10-09-big-extraction.md) |
-| POP-LZO expansion | `.\tools\Expand-POPLzo.ps1 -Path .\reports\lzo-input\FD3F0142.stored.bin -OutputDirectory .\reports\lzo-decoded` | [POP-LZO format](docs/formats/POP-LZO.md) |
-| Inspect MGM | `.\tools\Read-MGM.ps1 -Path .\reports\mgm-input\menu\pop4common.mgm -OutputDirectory .\reports\mgm-common` | [MGM format](docs/formats/MGM.md) |
-| Inspect DDS | `.\tools\Export-DDSPreview.ps1 -Path .\reports\POPData-extracted\menu\texture\pop.dds -OutputDirectory .\reports\logo-preview` | [DDS format](docs/formats/DDS.md) |
-| Inspect MFT | `.\tools\Read-MFT.ps1 -Path <extracted-font.mft> -OutputDirectory .\reports\font-atlas` | [MFT observations](docs/observations/2026-10-13-mft.md) |
+| Inspect BF index | `./tools/Read-BF.ps1 -Path ./game/TSoT-GOG/POPData.BF` | [BF format](docs/formats/BF.md) |
+| Extract BF entry | `./tools/Extract-BF.ps1 -Path ./game/TSoT-GOG/POPData.BF -Entry gamepads.dat -OutputDirectory ./reports/gamepads` | [BF baseline](docs/observations/2026-10-09-bf-baseline.md) |
+| Inspect BIG | `./tools/Read-BIG.ps1 -Path ./game/TSoT-GOG/prince.bf -OutputDirectory ./reports/prince-index` | [BIG format](docs/formats/BIG.md) |
+| Extract BIG stored bytes | `./tools/Extract-BIG.ps1 -Path ./game/TSoT-GOG/prince.bf -Id '0x03090337' -OutputDirectory ./reports/versiontag` | [Stored extraction](docs/observations/2026-10-09-big-extraction.md) |
+| POP-LZO expansion | `./tools/Expand-POPLzo.ps1 -Path ./reports/lzo-input/FD3F0142.stored.bin -OutputDirectory ./reports/lzo-decoded` | [POP-LZO format](docs/formats/POP-LZO.md) |
+| Inspect MGM | `./tools/Read-MGM.ps1 -Path ./reports/mgm-input/menu/pop4common.mgm -OutputDirectory ./reports/mgm-common` | [MGM format](docs/formats/MGM.md) |
+| Inspect DDS | `./tools/Export-DDSPreview.ps1 -Path ./reports/POPData-extracted/menu/texture/pop.dds -OutputDirectory ./reports/logo-preview` | [DDS format](docs/formats/DDS.md) |
+| Inspect MFT | `./tools/Read-MFT.ps1 -Path <extracted-font.mft> -OutputDirectory ./reports/font-atlas` | [MFT observations](docs/observations/2026-10-13-mft.md) |
 
 For less common workflows, see [Text DAT / INI](docs/formats/Text-DAT.md), [MGM resource links](docs/formats/MGM-resource-links.md), [BIG compression investigation](docs/formats/BIG-compression.md), and the dated [research observations](docs/observations/). The original tools distinguish stored extraction from decompression: extracting bytes does not automatically decode a resource.
 
-### Optional Python menu simulation
+### Menu resource-preparation validation
 
-The Python/Tk simulation is a **historical research/reference interface**, separate from the native Rust menu. It uses previously exported menu resources, approximates layouts from screenshots and does not control a playable game. Its optional legacy gamma bridge is not required for native menu settings.
+The following workflow was validated on Windows, Linux and macOS during the PowerShell 7.6 migration.
+
+It requires previously extracted menu resources, a local reference image and the configured Python interpreter.
 
 ```powershell
-# From the repository root, with an existing complete report:
-$pythonPath = (Get-Command python -ErrorAction Stop).Source
-$reportDirectory = Read-Host 'Path to the generated menu prototype report'
-.\tools\Show-MenuSimulation.ps1 -ReportDirectory $reportDirectory -PythonPath $pythonPath
+$menu = './reports/POPData-extracted/menu'
+$reference = Read-Host 'Path to the local reference image'
+$comparison = Join-Path $PWD "reports/menu-comparison-$([Guid]::NewGuid().ToString('N'))"
+$prototype = Join-Path $PWD "reports/menu-prototype-$([Guid]::NewGuid().ToString('N'))"
+$pages = Join-Path $PWD "reports/menu-pages-$([Guid]::NewGuid().ToString('N'))"
+$effects = Join-Path $PWD "reports/menu-effects-$([Guid]::NewGuid().ToString('N'))"
 ```
 
-The report must contain `experiment.json`, `menus-assets/catalog.json` and available referenced resources; screenshots alone are insufficient. See [original simulation evidence](docs/observations/2026-10-16-complete-menu-simulation.md) and [gamma bridge](docs/observations/2026-10-28-gamma-bridge.md).
+Generate the comparison report and menu prototype:
+
+```powershell
+pwsh -NoProfile -File ./tools/Compare-MFTMenu.ps1 -AssetRoot $menu -ReferenceImage $reference -OutputDirectory $comparison -PythonPath $pythonPath
+pwsh -NoProfile -File ./tools/Export-MenuPrototype.ps1 -AssetRoot $menu -ReferenceImage $reference -OutputDirectory $prototype -PythonPath $pythonPath
+```
+
+Generate the five menu scenes and Effects resources:
+
+```powershell
+pwsh -NoProfile -File ./tools/Export-MenuPages.ps1 -AssetRoot $menu -OutputDirectory $pages -PythonPath $pythonPath
+& $pythonPath ./src/build_effects_assets.py $menu $effects
+```
+
+Assemble the complete simulation report:
+
+```powershell
+Copy-Item -LiteralPath $pages -Destination (Join-Path $prototype 'menus-assets') -Recurse
+```
+
+Run the GUI smoke tests:
+
+```powershell
+pwsh -NoProfile -File ./tools/Show-MenuPrototype.ps1 -ReportDirectory $prototype -PythonPath $pythonPath -SmokeTest
+pwsh -NoProfile -File ./tools/Show-MenuSimulation.ps1 -ReportDirectory $prototype -PythonPath $pythonPath -SmokeTest
+```
+
+Expected smoke-test results:
+
+```text
+GUI smoke test passed: five menu pages, choices, separate bindings, return and disposal.
+Complete simulation smoke test passed: ten screens, profiles, editing, scrolling, transactions and quit.
+```
+
+These checks validate resource generation, interface initialization and selected interactions. They do not establish original-game visual fidelity.
+
+### Optional Python menu simulation
+
+The Python/Tk simulation is a **historical research/reference interface**, separate from the native Rust menu. It uses previously exported menu resources, approximates layouts from screenshots and does not control a playable game.
+
+The prototype and complete simulation were validated on Windows, Linux and macOS during the PowerShell 7.6 migration.
+
+The optional legacy gamma bridge is not required for native menu settings and was not independently validated across all three platforms.
+
+From the repository root, using the Python interpreter configured in [Research tool setup](#research-tool-setup):
+
+```powershell
+$reportDirectory = Read-Host 'Path to the generated menu prototype report'
+./tools/Show-MenuPrototype.ps1 -ReportDirectory $reportDirectory -PythonPath $pythonPath
+```
+
+To launch the complete simulation:
+
+```powershell
+./tools/Show-MenuSimulation.ps1 -ReportDirectory $reportDirectory -PythonPath $pythonPath
+```
+
+The complete simulation report must contain `experiment.json`, `menus-assets/catalog.json` and available referenced resources; screenshots alone are insufficient.
+
+See [Menu resource-preparation validation](#menu-resource-preparation-validation), [original simulation evidence](docs/observations/2026-10-16-complete-menu-simulation.md) and [gamma bridge](docs/observations/2026-10-28-gamma-bridge.md).
 
 ## Research and evidence index
 
@@ -316,5 +769,8 @@ Detailed historical test counts, hashes, byte offsets, resource IDs, fixture req
 - State the platform, hardware, driver and date for Vulkan/GPU checks. Do not generalize a passing check beyond its measured scope.
 - When a later finding supersedes an earlier one, update the **current status** here and link a new dated observation; preserve the earlier record as historical evidence.
 - Verify Markdown links, example commands and test-scope claims before publication.
+- Use PowerShell 7.6 LTS for new research scripts and modules.
+- Prefer portable filesystem paths and avoid introducing platform-specific dependencies into shared research workflows without justification.
+- Follow the repository line-ending policies defined in `.gitattributes` and document the platform scope of new validation results.
 
 For licensing and legal conditions, see [LICENSE](LICENSE) and the [main README disclaimer](README.md#license--legal-disclaimer).
